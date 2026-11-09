@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Project Aether field instruments</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Saira+Semi+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #EDF2F4; --surface: #FFFFFF; --surface-2: #E1E9ED; --ink: #0F2533; --ink-2: #4A6272; --line: #C7D5DC;
+  --cyan: #00808F; --glow: #12CFE2; --magenta: #C2185B; --green: #12825A; --amber: #A86400;
+  --glass: rgba(244,248,250,.9); --glass-ink: #0F2533; --scrim: rgba(15,37,51,.35);
+  --font-ui: "Saira Semi Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #07141B; --surface: #0E212B; --surface-2: #142C38; --ink: #E4F2F6; --ink-2: #93AEBB; --line: #23434F;
+    --cyan: #47DCEC; --glow: #47DCEC; --magenta: #FF5E9C; --green: #45D99A; --amber: #F2B04A;
+    --glass: rgba(7,20,27,.86); --glass-ink: #E4F2F6; --scrim: rgba(0,0,0,.5);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #07141B; --surface: #0E212B; --surface-2: #142C38; --ink: #E4F2F6; --ink-2: #93AEBB; --line: #23434F;
+  --cyan: #47DCEC; --glow: #47DCEC; --magenta: #FF5E9C; --green: #45D99A; --amber: #F2B04A;
+  --glass: rgba(7,20,27,.86); --glass-ink: #E4F2F6; --scrim: rgba(0,0,0,.5);
+  color-scheme: dark;
+}
+*, *::before, *::after { box-sizing: inherit; }
+html { height: 100%; scroll-padding-top: env(safe-area-inset-top, 0px); }
+body { margin: 0; min-height: 100%; background: var(--bg); color: var(--ink); font: 17px/1.5 var(--font-body); -webkit-text-size-adjust: 100%; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 50; background: var(--bg); }
+body[data-view="field"]::before { background: var(--glass); }
+body.toasting .status { visibility: hidden; }
+[hidden] { display: none !important; }
+h1, h2, h3 { font-family: var(--font-ui); line-height: 1.1; margin: 0; }
+a { color: var(--cyan); }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--glow); outline-offset: 2px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: .4em; min-height: 46px; padding: 0 18px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--surface); font-family: var(--font-ui); font-weight: 600; font-size: 17px; cursor: pointer; text-decoration: none; color: var(--ink); }
+.btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.btn.ghost { background: transparent; }
+.btn.small { min-height: 38px; padding: 0 12px; font-size: 15px; border-radius: 10px; }
+.btn.wide { width: 100%; }
+.btn:active { transform: translateY(1px); }
+.btn[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+
+/* ---------- Home ---------- */
+.home { max-width: 560px; margin: 0 auto; padding: 32px 22px 48px; }
+.home-head { display: grid; grid-template-columns: 76px 1fr; gap: 6px 16px; align-items: center; }
+.home-head .mark { width: 76px; height: 76px; grid-row: span 2; color: var(--cyan); }
+.home-head h1 { font-size: 46px; font-weight: 700; letter-spacing: -.01em; }
+.home-head .sub { margin: 0; color: var(--ink-2); max-width: 34ch; }
+.round-row { margin: 34px 0 26px; }
+.round-row label { display: block; font-family: var(--font-ui); font-weight: 600; font-size: 18px; margin-bottom: 8px; }
+.round-ctl { display: flex; gap: 10px; }
+.round-ctl input { width: 7.2ch; min-height: 54px; padding: 0 14px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); font: 700 30px/1 var(--font-ui); letter-spacing: .08em; }
+.hint { margin: 8px 0 0; color: var(--ink-2); font-size: 15px; }
+.roles { display: grid; gap: 14px; }
+.role { position: relative; display: block; padding: 20px 20px 20px 64px; border-radius: 18px; background: var(--surface); border: 1.5px solid var(--line); text-decoration: none; color: var(--ink); }
+.role::before { content: ""; position: absolute; left: 20px; top: 22px; width: 26px; height: 26px; border-radius: 50%; border: 3px solid var(--glow); }
+.role[data-role="astro"]::before { border-color: var(--magenta); }
+.role-name { display: block; font: 700 26px/1.1 var(--font-ui); }
+.role-job { display: block; margin-top: 6px; color: var(--ink-2); font-size: 16px; }
+.home-links { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 26px; font-family: var(--font-ui); font-weight: 600; font-size: 18px; }
+
+/* ---------- Field ---------- */
+.cam-stage { position: fixed; inset: 0; background: #031017; overflow: hidden; }
+.cam-stage video, .cam-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+#reticle { position: absolute; left: 50%; top: 46%; width: min(64vw, 300px); height: min(64vw, 300px); transform: translate(-50%, -50%); color: #E9FBFF; opacity: .8; pointer-events: none; }
+#reticle .ring { transform-origin: 0 0; animation: spin 14s linear infinite; }
+#reticle.locked { color: var(--glow); opacity: 1; }
+#reticle.locked .ring { animation-play-state: paused; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.field-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 20; display: flex; align-items: center; gap: 12px; padding: calc(env(safe-area-inset-top, 0px) + 8px) 14px 10px; background: var(--glass); color: var(--glass-ink); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.icon-btn { width: 42px; height: 42px; border-radius: 12px; border: 1.5px solid var(--line); background: transparent; display: grid; place-items: center; cursor: pointer; }
+.who { flex: 1; display: flex; flex-direction: column; line-height: 1.15; }
+.who strong { font: 700 20px/1.1 var(--font-ui); }
+.who span { font-size: 14px; color: var(--ink-2); }
+.strikes { display: flex; gap: 6px; }
+.strikes i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--ink-2); }
+.strikes i.on { background: var(--magenta); border-color: var(--magenta); }
+.status { position: fixed; left: 14px; right: 14px; margin: 0 auto; width: fit-content; top: calc(env(safe-area-inset-top, 0px) + 74px); z-index: 15; padding: 8px 14px; border-radius: 999px; background: var(--glass); color: var(--glass-ink); font: 600 16px/1.3 var(--font-ui); text-align: center; }
+.start-cam { position: fixed; left: 16px; right: 16px; top: 50%; transform: translateY(-50%); z-index: 25; max-width: 420px; margin: 0 auto; padding: 22px; border-radius: 20px; background: var(--glass); color: var(--glass-ink); text-align: center; display: grid; gap: 10px; }
+.start-cam p { margin: 0; color: var(--ink-2); font-size: 15px; }
+.start-cam .err { color: var(--magenta); font-weight: 700; }
+.tray { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; align-items: center; gap: 10px; padding: 10px 14px calc(env(safe-area-inset-bottom, 0px) + 12px); background: var(--glass); color: var(--glass-ink); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.chips { flex: 1; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+.chips:empty::before { content: "Scanned nodes show here"; color: var(--ink-2); font-size: 15px; align-self: center; }
+.chip { flex: none; display: inline-flex; align-items: center; gap: 8px; min-height: 38px; padding: 0 12px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); font: 600 15px/1 var(--font-ui); cursor: pointer; }
+.chip::before { content: ""; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--glow); }
+.chip.solved::before { background: var(--green); border-color: var(--green); }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; max-height: 84%; display: flex; flex-direction: column; background: var(--surface); color: var(--ink); border-radius: 20px 20px 0 0; box-shadow: 0 -10px 40px rgba(0,0,0,.25); padding-bottom: env(safe-area-inset-bottom, 0px); animation: rise .22s ease-out; }
+@keyframes rise { from { transform: translateY(24px); opacity: .4; } }
+.sheet-head { display: flex; align-items: flex-start; gap: 12px; padding: 18px 18px 12px; border-bottom: 1px solid var(--line); }
+.sheet-head > div { flex: 1; }
+.sheet-slot { margin: 0 0 2px; color: var(--ink-2); font-size: 14px; }
+.sheet-head h2 { font-size: 28px; font-weight: 700; }
+.sheet-body { overflow-y: auto; padding: 16px 18px 26px; }
+.sheet-body h3 { font-size: 20px; font-weight: 700; margin: 22px 0 8px; }
+.sheet-body h3:first-child { margin-top: 0; }
+.sheet-body p { margin: 0 0 10px; max-width: 62ch; }
+.lead { font-size: 18px; }
+.muted { color: var(--ink-2); }
+.done-note { padding: 12px 14px; border-radius: 12px; background: color-mix(in srgb, var(--green) 14%, var(--surface)); color: var(--ink); font-weight: 700; margin: 0 0 14px; }
+table.rule { border-collapse: collapse; width: 100%; font-size: 16px; }
+table.rule th, table.rule td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.rule th { font: 600 15px/1.2 var(--font-ui); color: var(--ink-2); }
+.scroll-x { overflow-x: auto; }
+.swatch { display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px; margin-right: 6px; }
+.formula { padding: 12px 14px; border-left: 4px solid var(--glow); background: var(--surface-2); border-radius: 0 10px 10px 0; margin: 0 0 12px; }
+.strands { width: 100%; height: 150px; display: block; margin: 4px 0 10px; }
+.pulse { display: inline-flex; gap: 5px; align-items: center; }
+.pulse i { display: inline-block; height: 10px; border-radius: 5px; background: var(--ink); }
+.pulse i.s { width: 12px; } .pulse i.l { width: 34px; }
+.tuner { margin-top: 18px; padding: 16px; border-radius: 16px; background: var(--surface-2); display: grid; gap: 12px; }
+.readout { display: flex; align-items: baseline; gap: 8px; }
+.readout output { font: 700 54px/1 var(--font-ui); letter-spacing: .02em; }
+.readout span { color: var(--ink-2); }
+.tuner input[type=range] { width: 100%; accent-color: var(--cyan); height: 34px; }
+.nudge { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.orders { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 6px; }
+.orders figure { margin: 0; text-align: center; }
+.orders svg { width: 100%; aspect-ratio: 1; display: block; }
+.orders figcaption { font: 600 16px/1.2 var(--font-ui); margin-top: 4px; }
+.keypad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.key { position: relative; display: grid; justify-items: center; gap: 4px; padding: 10px 4px 8px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--surface); cursor: pointer; color: var(--ink); }
+.key svg { width: 44px; height: 44px; }
+.key span { font-size: 13px; line-height: 1.15; text-align: center; }
+.key.lit { border-color: var(--green); background: color-mix(in srgb, var(--green) 14%, var(--surface)); }
+.key.lit::after { content: attr(data-n); position: absolute; top: 4px; right: 6px; font: 700 14px/1 var(--font-ui); color: var(--green); }
+.key.miss { animation: shake .3s; border-color: var(--magenta); }
+@keyframes shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+.shape { width: 22px; height: 22px; vertical-align: -5px; margin-right: 6px; }
+.ar-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 22; display: grid; gap: 10px; padding: 12px 14px calc(env(safe-area-inset-bottom, 0px) + 12px); background: var(--glass); color: var(--glass-ink); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.ar-bar .row { display: flex; gap: 8px; align-items: center; }
+.ar-bar .row .grow { flex: 1; }
+.seg-label { font: 600 16px/1 var(--font-ui); color: var(--ink-2); margin-right: 2px; }
+.seg { display: flex; gap: 6px; }
+.seg .btn { min-width: 46px; padding: 0 10px; }
+.ar-help { margin: 0; font-size: 15px; color: var(--ink-2); }
+.flat { position: fixed; inset: 0; z-index: 40; overflow-y: auto; background: var(--bg); color: var(--ink); padding: calc(env(safe-area-inset-top, 0px) + 16px) 18px calc(env(safe-area-inset-bottom, 0px) + 24px); }
+.flat-inner { max-width: 520px; margin: 0 auto; display: grid; gap: 14px; }
+.flat-head { display: flex; align-items: center; gap: 12px; }
+.flat-head h2 { flex: 1; font-size: 28px; }
+.maze-svg { width: 100%; max-width: 480px; justify-self: center; display: block; }
+.mz-lane { fill: none; stroke: var(--surface-2); }
+.mz-wall { fill: none; stroke: var(--cyan); stroke-width: 2.2; stroke-linecap: round; }
+.mz-mark { fill: none; stroke: var(--magenta); stroke-width: 2.2; }
+.mz-core { fill: var(--cyan); }
+.mz-num { fill: var(--ink-2); font: 600 8px var(--font-ui); text-anchor: middle; dominant-baseline: central; }
+.mz-title { fill: var(--ink); font: 700 9px var(--font-ui); text-anchor: middle; }
+dialog { border: 0; border-radius: 20px; padding: 20px; background: var(--surface); color: var(--ink); width: min(92vw, 380px); }
+dialog::backdrop { background: var(--scrim); }
+dialog h2 { font-size: 24px; margin-bottom: 12px; }
+.shard-pick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
+.toast { position: fixed; left: 14px; right: 14px; margin: 0 auto; width: fit-content; top: calc(env(safe-area-inset-top, 0px) + 72px); z-index: 45; padding: 10px 16px; border-radius: 14px; background: var(--ink); color: var(--bg); font: 600 16px/1.3 var(--font-ui); text-align: center; }
+.toast.bad { background: var(--magenta); color: #fff; }
+.toast.good { background: var(--green); color: #fff; }
+.flash { position: fixed; inset: 0; z-index: 44; pointer-events: none; background: var(--magenta); opacity: 0; }
+.flash.go { animation: flash .5s ease-out; }
+@keyframes flash { 0% { opacity: .45; } 100% { opacity: 0; } }
+.lost { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: var(--scrim); padding: 24px; }
+.lost > div { max-width: 360px; padding: 24px; border-radius: 20px; background: var(--surface); text-align: center; display: grid; gap: 12px; }
+.lost h2 { font-size: 32px; color: var(--magenta); }
+.lost p { margin: 0; }
+
+/* ---------- Shards ---------- */
+.paper { max-width: 900px; margin: 0 auto; padding: 28px 20px 48px; }
+.paper-head { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: end; justify-content: space-between; margin-bottom: 20px; }
+.paper-head h1 { font-size: 38px; }
+.paper-head p { margin: 6px 0 0; color: var(--ink-2); max-width: 52ch; }
+.shard-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 18px; }
+.shard-card { background: #fff; color: #0F2533; border-radius: 18px; border: 1.5px solid #C7D5DC; padding: 18px; display: grid; gap: 10px; justify-items: center; break-inside: avoid; }
+.shard-card .qr { width: 80mm; max-width: 100%; height: auto; display: block; }
+.shard-card h2 { font-size: 30px; }
+.shard-card p { margin: 0; font-size: 13px; color: #4A6272; }
+@media print {
+  @page { size: A4; margin: 12mm; }
+  body { background: #fff; }
+  body::before, .no-print { display: none !important; }
+  :root { padding: 0; }
+  .paper { padding: 0; max-width: none; }
+  .shard-grid { grid-template-columns: 1fr 1fr; gap: 8mm; }
+  .shard-card { border: .4mm dashed #9AA9B1; border-radius: 4mm; }
+  .shard-card:nth-child(4n) { break-after: page; }
+}
+
+/* ---------- Test sheet ---------- */
+.test-sec { margin-top: 26px; }
+.test-sec h2 { font-size: 26px; margin-bottom: 4px; }
+.test-sec > p { margin: 0 0 10px; color: var(--ink-2); }
+.test-card { background: var(--surface); border: 1.5px solid var(--line); border-radius: 16px; padding: 16px; margin-top: 12px; }
+.test-card h3 { font-size: 21px; margin-bottom: 8px; }
+.test-card dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+.test-card dt { color: var(--ink-2); }
+.test-card dd { margin: 0; font-weight: 700; }
+details { margin-top: 10px; }
+summary { cursor: pointer; font-family: var(--font-ui); font-weight: 600; color: var(--cyan); }
+.glyph-row { display: flex; gap: 14px; flex-wrap: wrap; }
+.glyph-row svg { width: 54px; height: 54px; }
+.cells { display: inline-flex; gap: 6px; vertical-align: middle; }
+.cells i { width: 14px; height: 26px; border-radius: 7px; border: 2px solid var(--ink-2); }
+.cells i.on { background: var(--glow); border-color: var(--glow); }
+@media (prefers-reduced-motion: reduce) {
+  #reticle .ring { animation: none; }
+  .sheet { animation: none; }
+  .flash.go { animation: none; }
+}
+</style>
+</head>
+<body data-view="home">
+
+<main id="view-home" class="view home">
+  <header class="home-head">
+    <svg class="mark" viewBox="-50 -50 100 100" aria-hidden="true">
+      <g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" id="mark-ticks"></g>
+      <circle r="9" fill="currentColor"/>
+    </svg>
+    <h1>Project Aether</h1>
+    <p class="sub">Field instruments for the two specialists. Scan a shard, read its rule, talk it through.</p>
+  </header>
+  <div class="round-row">
+    <label for="round-input">Round number</label>
+    <div class="round-ctl">
+      <input id="round-input" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="0000">
+      <button id="new-round" class="btn ghost" type="button">New round</button>
+    </div>
+    <p class="hint">The whole crew uses the same round number.</p>
+  </div>
+  <div class="roles">
+    <a class="role" href="#xenolinguist" data-role="xeno">
+      <span class="role-name">Xenolinguist</span>
+      <span class="role-job">Symbols, mazes and memory: the Glyph Lock, the Descent and the Echo Chamber.</span>
+    </a>
+    <a class="role" href="#astrophysicist" data-role="astro">
+      <span class="role-name">Astrophysicist</span>
+      <span class="role-job">Energy, signals and pressure: the Conduits, the Resonator and the Pressure Vent.</span>
+    </a>
+  </div>
+  <nav class="home-links">
+    <a href="#shards">Print the shards</a>
+    <a href="#test">Open the test sheet</a>
+  </nav>
+</main>
+
+<section id="view-field" class="view" hidden>
+  <div class="cam-stage">
+    <video id="cam" playsinline muted autoplay></video>
+    <canvas id="ar" aria-hidden="true"></canvas>
+    <canvas id="overlay" aria-hidden="true"></canvas>
+    <svg id="reticle" viewBox="-60 -60 120 120" aria-hidden="true">
+      <g class="ring" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" id="reticle-ticks"></g>
+    </svg>
+  </div>
+  <header class="field-bar">
+    <button id="exit" class="icon-btn" type="button" aria-label="Leave the field">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 4 7 10l6 6"/></svg>
+    </button>
+    <div class="who"><strong id="role-name">Specialist</strong><span id="round-label"></span></div>
+    <div class="strikes" id="strikes" aria-label="Strikes: 0 of 3"><i></i><i></i><i></i></div>
+  </header>
+  <div id="status" class="status" role="status" hidden></div>
+  <div id="start-cam" class="start-cam">
+    <button id="start-btn" class="btn primary" type="button">Start the scanner</button>
+    <p id="cam-msg">Allow camera access when your phone asks.</p>
+    <button class="btn ghost manual-open" type="button">Enter a shard number instead</button>
+  </div>
+  <nav class="tray" id="tray">
+    <div id="chips" class="chips"></div>
+    <button class="btn ghost small manual-open" type="button">Shard number</button>
+  </nav>
+  <div id="ar-bar" class="ar-bar" hidden>
+    <p class="ar-help" id="ar-help">Match the glowing markers to the Pathfinder’s, then call moves.</p>
+    <div class="row">
+      <span class="seg-label" aria-hidden="true">Maze</span>
+      <div class="seg" id="maze-seg-ar" role="group" aria-label="Maze"></div>
+    </div>
+    <div class="row">
+      <button class="btn small grow" type="button" id="flat-open">Flat view</button>
+      <button class="btn small primary grow" type="button" id="descent-done">Done</button>
+    </div>
+  </div>
+  <article id="sheet" class="sheet" hidden aria-labelledby="sheet-title">
+    <header class="sheet-head">
+      <div><p class="sheet-slot" id="sheet-slot"></p><h2 id="sheet-title"></h2></div>
+      <button id="sheet-close" class="btn ghost small" type="button">Close</button>
+    </header>
+    <div id="sheet-body" class="sheet-body"></div>
+  </article>
+  <div id="flat" class="flat" hidden>
+    <div class="flat-inner">
+      <div class="flat-head"><h2>The Descent</h2><button class="btn small" type="button" id="flat-close">Back</button></div>
+      <div class="seg" id="maze-seg-flat" role="group" aria-label="Maze"></div>
+      <div id="flat-maze"></div>
+      <p class="muted">Pink rings are the markers the Pathfinder can see. Find the maze whose markers match theirs. Walls are solid lines; a break in a ring is a gap where they can step inward. One swipe moves one hour around the ring.</p>
+    </div>
+  </div>
+  <dialog id="manual">
+    <h2>Enter a shard number</h2>
+    <div class="shard-pick" id="shard-pick"></div>
+    <button class="btn ghost wide" type="button" id="manual-cancel">Cancel</button>
+  </dialog>
+  <div id="toast" class="toast" role="alert" hidden></div>
+  <div id="flash" class="flash"></div>
+  <div id="lost" class="lost" hidden>
+    <div>
+      <h2>Link lost</h2>
+      <p>Three strikes ejected the Pathfinder. Start a new round from the home screen.</p>
+      <a class="btn primary" href="#home">Back to home</a>
+    </div>
+  </div>
+</section>
+
+<section id="view-shards" class="view" hidden>
+  <div class="paper">
+    <div class="paper-head no-print">
+      <div>
+        <h1>Shards</h1>
+        <p>Print on A4 at 100% scale, four shards per page. Keep each card flat on the table. The game reassigns which node each shard holds every round.</p>
+      </div>
+      <div style="display:flex;gap:10px"><a class="btn ghost" href="#home">Home</a><button class="btn primary" type="button" id="print-btn">Print</button></div>
+    </div>
+    <div class="shard-grid" id="shard-grid"></div>
+  </div>
+</section>
+
+<section id="view-test" class="view" hidden>
+  <div class="paper">
+    <div class="paper-head">
+      <div>
+        <h1>Test sheet</h1>
+        <p>Stands in for the Pathfinder and Flight Director until their apps exist. Read the Pathfinder’s side aloud; keep answers hidden until you need them.</p>
+      </div>
+      <a class="btn ghost" href="#home">Home</a>
+    </div>
+    <div class="round-ctl" style="margin-bottom:6px">
+      <input id="test-round" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" aria-label="Round number">
+      <button class="btn" type="button" id="test-load">Load round</button>
+    </div>
+    <div id="test-body"></div>
+  </div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script>
+/*LOGIC-START*/
+const CODENAMES = ['Heron','Osprey','Marlin','Cypress','Granite','Vesper','Pelican','Linden'];
+const SEALS = ['Harbour','Falcon','Meridian','Thistle','Juniper','Orchid','Summit','Willow','Quarry','Tundra','Beacon','Cinder'];
+const SIGILS = ['Spiral','Eye','Crown','Wave'];
+const NODES = [
+  { id: 'conduits',  name: 'The Conduits',      slot: 1, owner: 'astro' },
+  { id: 'resonator', name: 'The Resonator',     slot: 2, owner: 'astro' },
+  { id: 'glyph',     name: 'The Glyph Lock',    slot: 3, owner: 'xeno' },
+  { id: 'descent',   name: 'The Descent',       slot: 4, owner: 'xeno' },
+  { id: 'echo',      name: 'The Echo Chamber',  slot: 5, owner: 'xeno' },
+  { id: 'vent',      name: 'The Pressure Vent', slot: 6, owner: 'astro' }
+];
+const NODE = Object.fromEntries(NODES.map(n => [n.id, n]));
+const ROLES = { xeno: { name: 'Xenolinguist' }, astro: { name: 'Astrophysicist' } };
+const COLOURS = { Amber: 3, Violet: 2, Teal: 1, Grey: 0 };
+const PATTERNS = { SSSL: [412, 538], SSLL: [426, 571], SLSL: [449, 503], SLLS: [463, 594], LSSL: [478, 517], LSLS: [485, 552], LLSS: [491, 529], LLLS: [507, 586] };
+const GLYPH_GRID = [
+  ['Comet', 'Fork', 'Almond', 'Ladder'],
+  ['Twin Moons', 'Knot', 'Arrowhead', 'Broken Ring'],
+  ['Spine', 'Hourglass', 'Lantern', 'Hook'],
+  ['Gate', 'Star Seed', 'Ripple', 'Claw']
+];
+const READ_ORDERS = {
+  Spiral: [[0,0],[0,1],[0,2],[0,3],[1,3],[2,3],[3,3],[3,2],[3,1],[3,0],[2,0],[1,0],[1,1],[1,2],[2,2],[2,1]],
+  Eye: [], Crown: [], Wave: []
+};
+for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) READ_ORDERS.Eye.push([r, c]);
+for (let r = 3; r >= 0; r--) for (let c = 0; c < 4; c++) READ_ORDERS.Crown.push([r, c]);
+for (let r = 0; r < 4; r++) for (let i = 0; i < 4; i++) READ_ORDERS.Wave.push([r, r % 2 === 0 ? i : 3 - i]);
+// Sectors 0..11 (0 = 12 o'clock). walls[ring] = radial wall between sector b and b+1. gaps[ring] = step-in sectors.
+const MAZES = {
+  A: { walls: [[2,7],[0,4,8],[1,6]],   gaps: [[5,10,1],[7,3],[11,4]],  markers: [[1,2],[2,9]] },
+  B: { walls: [[0,5,9],[2,6,10],[3,9]], gaps: [[3,8,11,6],[4,1],[7,0]], markers: [[1,9],[2,5]] },
+  C: { walls: [[1,6],[3,8,11],[5,0]],  gaps: [[4,9,0],[6,10],[8]],     markers: [[1,5],[2,0]] },
+  D: { walls: [[3,9],[1,5,9],[2,7]],   gaps: [[7,1,5],[8,11],[1]],     markers: [[1,0],[2,3]] }
+};
+const RING_NAMES = ['Outer', 'Middle', 'Inner', 'Core'];
+const SHAPES = ['Triangle', 'Square', 'Circle', 'Cross'];
+const hourOf = s => (s === 0 ? 12 : s);
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function charge(colour, dot, flicker) { return (COLOURS[colour] + (dot ? 1 : 0)) * (flicker ? 2 : 1); }
+function resonatorFreq(pattern, last) { return PATTERNS[pattern][last % 2]; }
+function glyphAnswer(glyphs, sigil) {
+  const idx = {};
+  READ_ORDERS[sigil].forEach(([r, c], i) => { idx[GLYPH_GRID[r][c]] = i; });
+  return glyphs.slice().sort((a, b) => idx[a] - idx[b]);
+}
+// hist[stage] = [positionPressed, labelPressed]; labels = label at positions 1..4; returns position 1..4
+function echoPress(stage, shape, labels, hist, cells) {
+  const posOf = lab => labels.indexOf(lab) + 1;
+  if (stage === 1) return { Triangle: 2, Square: posOf(4), Circle: 4, Cross: posOf(1) }[shape];
+  if (stage === 2) return { Triangle: posOf(hist[1][1]), Square: 1, Circle: (hist[1][0] % 4) + 1, Cross: posOf(3) }[shape];
+  if (stage === 3) return { Triangle: hist[2][1], Square: posOf(hist[1][1]), Circle: 3, Cross: posOf(hist[2][0]) }[shape];
+  return { Triangle: hist[2][0], Square: posOf(cells), Circle: hist[1][1], Cross: posOf(hist[3][1]) }[shape];
+}
+function ventAnswer(g, last) {
+  const [L, C, R] = g;
+  if (L === C && C === R) return 'Centre';
+  if (L === C) return 'Right';
+  if (L === R) return 'Centre';
+  if (C === R) return 'Left';
+  const names = ['Left', 'Centre', 'Right'];
+  return last <= 4 ? names[g.indexOf(Math.max(...g))] : names[g.indexOf(Math.min(...g))];
+}
+function mazeSegment(walls, s) {
+  const out = new Set([s]); const q = [s];
+  while (q.length) {
+    const x = q.pop();
+    for (const d of [1, -1]) {
+      const y = (x + d + 12) % 12; const b = d === 1 ? x : y;
+      if (!walls.includes(b) && !out.has(y)) { out.add(y); q.push(y); }
+    }
+  }
+  return out;
+}
+function mazeCanFinish(mz, ring, s) {
+  if (ring === 3) return true;
+  for (const g of mazeSegment(mz.walls[ring], s)) if (mz.gaps[ring].includes(g) && mazeCanFinish(mz, ring + 1, g)) return true;
+  return false;
+}
+// Shortest safe route from outer sector `start` to the core: list of 'right' | 'left' | 'in'
+function mazeRoute(key, start) {
+  const mz = MAZES[key]; const seen = new Set(['0,' + start]); const q = [[0, start, []]];
+  while (q.length) {
+    const [r, s, path] = q.shift();
+    if (r === 3) return path;
+    for (const [move, d] of [['right', 1], ['left', -1]]) {
+      const y = (s + d + 12) % 12; const b = d === 1 ? s : y;
+      if (mz.walls[r].includes(b) || seen.has(r + ',' + y)) continue;
+      seen.add(r + ',' + y); q.push([r, y, path.concat(move)]);
+    }
+    if (mz.gaps[r].includes(s) && (r + 1 === 3 || mazeCanFinish(mz, r + 1, s)) && !seen.has((r + 1) + ',' + s)) {
+      seen.add((r + 1) + ',' + s); q.push([r + 1, s, path.concat('in')]);
+    }
+  }
+  return null;
+}
+function makeRound(code) {
+  const rnd = mulberry32(((code * 2654435761) >>> 0) ^ 0x9E3779B9);
+  const int = n => Math.floor(rnd() * n);
+  const pick = a => a[int(a.length)];
+  const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = int(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const codename = pick(CODENAMES);
+  const digits = String(int(10000)).padStart(4, '0');
+  const last = Number(digits[3]);
+  const cells = 1 + int(4);
+  const cellStates = shuffle([0, 1, 2, 3].map(i => i < cells));
+  const sigil = pick(SIGILS);
+  const shards = shuffle([1, 2, 3, 4, 5, 6, 7, 8]);
+  const seals = shuffle(SEALS);
+  const nodeShard = {}, shardNode = {}, nodeSeal = {};
+  NODES.forEach((n, i) => { nodeShard[n.id] = shards[i]; shardNode[shards[i]] = n.id; nodeSeal[n.id] = seals[i]; });
+  const deadShards = shards.slice(6).sort((a, b) => a - b);
+  let strands, targets;
+  do {
+    const n = 4 + int(3);
+    strands = Array.from({ length: n }, () => ({ colour: pick(Object.keys(COLOURS)), dot: rnd() < 0.5, flicker: rnd() < 0.5 }));
+    targets = strands.map((s, i) => (charge(s.colour, s.dot, s.flicker) === cells ? i + 1 : 0)).filter(Boolean);
+  } while (targets.length < 1 || targets.length > 3);
+  const pattern = pick(Object.keys(PATTERNS));
+  const glyphs = shuffle(GLYPH_GRID.flat()).slice(0, 4);
+  const maze = pick(Object.keys(MAZES));
+  const start = int(12);
+  const stages = []; const hist = {};
+  for (let st = 1; st <= 4; st++) {
+    const shape = pick(SHAPES); const labels = shuffle([1, 2, 3, 4]);
+    const position = echoPress(st, shape, labels, hist, cells);
+    hist[st] = [position, labels[position - 1]];
+    stages.push({ shape, labels, position, label: labels[position - 1] });
+  }
+  const gauges = [1 + int(5), 1 + int(5), 1 + int(5)];
+  return {
+    code, caseNumber: codename + ' ' + digits, last, cells, cellStates, sigil, nodeShard, shardNode, nodeSeal, deadShards,
+    conduits: { strands, targets },
+    resonator: { pattern, freq: resonatorFreq(pattern, last) },
+    glyph: { glyphs, answer: glyphAnswer(glyphs, sigil) },
+    descent: { maze, start, route: mazeRoute(maze, start) },
+    echo: { stages },
+    vent: { gauges, answer: ventAnswer(gauges, last) }
+  };
+}
+// ---- Pose from a tracked square (QR corners) ----
+// Marker plane coordinates: QR side = 1, X right, Y down. Order: top-left, top-right, bottom-right, bottom-left.
+const MARKER_SRC = [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]];
+function solveLinear(A, b) {
+  const n = b.length; const M = A.map((row, i) => row.concat(b[i]));
+  for (let c = 0; c < n; c++) {
+    let p = c; for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+    if (Math.abs(M[p][c]) < 1e-12) return null;
+    [M[c], M[p]] = [M[p], M[c]];
+    for (let r = 0; r < n; r++) {
+      if (r === c) continue; const f = M[r][c] / M[c][c];
+      for (let k = c; k <= n; k++) M[r][k] -= f * M[c][k];
+    }
+  }
+  return M.map((row, i) => row[n] / row[i]);
+}
+function solveHomography(src, dst) {
+  const A = [], b = [];
+  for (let i = 0; i < 4; i++) {
+    const [X, Y] = src[i]; const u = dst[i].x, v = dst[i].y;
+    A.push([X, Y, 1, 0, 0, 0, -u * X, -u * Y]); b.push(u);
+    A.push([0, 0, 0, X, Y, 1, -v * X, -v * Y]); b.push(v);
+  }
+  const h = solveLinear(A, b);
+  return h ? h.concat(1) : null;
+}
+function poseFromHomography(H, f, cx, cy) {
+  if (!H) return null;
+  const col = j => [H[j], H[3 + j], H[6 + j]];
+  const kinv = c => [(c[0] - cx * c[2]) / f, (c[1] - cy * c[2]) / f, c[2]];
+  const norm = v => Math.hypot(v[0], v[1], v[2]);
+  const scale = (v, k) => v.map(x => x * k);
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const m1 = kinv(col(0)), m2 = kinv(col(1)), m3 = kinv(col(2));
+  let lam = 2 / (norm(m1) + norm(m2));
+  if (m3[2] * lam < 0) lam = -lam;
+  let r1 = scale(m1, lam); r1 = scale(r1, 1 / norm(r1));
+  let r2 = scale(m2, lam); const d = dot(r1, r2);
+  r2 = [r2[0] - d * r1[0], r2[1] - d * r1[1], r2[2] - d * r1[2]]; r2 = scale(r2, 1 / norm(r2));
+  const r3 = [r1[1] * r2[2] - r1[2] * r2[1], r1[2] * r2[0] - r1[0] * r2[2], r1[0] * r2[1] - r1[1] * r2[0]];
+  return { r1, r2, r3, t: scale(m3, lam) };
+}
+/*LOGIC-END*/
+
+// ---------- Drawings ----------
+const GLYPH_SVG = {
+  'Comet': '<circle cx="34" cy="34" r="14" fill="currentColor"/><path d="M46 46 86 86M40 55 70 85M55 40 85 70"/>',
+  'Fork': '<path d="M50 10V44M24 44H76M24 44V88M50 44V88M76 44V88"/>',
+  'Almond': '<path d="M10 50Q50 8 90 50Q50 92 10 50Z"/>',
+  'Ladder': '<path d="M32 10V90M68 10V90M32 30H68M32 50H68M32 70H68"/>',
+  'Twin Moons': '<path d="M14 14A36 36 0 0 1 14 86A22 36 0 0 0 14 14ZM86 14A36 36 0 0 0 86 86A22 36 0 0 1 86 14Z" fill="currentColor" stroke="none"/>',
+  'Knot': '<path d="M50 50C10 6 90 6 50 50C10 94 90 94 50 50Z"/>',
+  'Arrowhead': '<path d="M50 12 86 84H14Z" fill="currentColor"/>',
+  'Broken Ring': '<path d="M64.8 18.3A35 35 0 1 1 35.2 18.3"/>',
+  'Spine': '<path d="M50 8V92M38 22H62M38 36H62M38 50H62M38 64H62M38 78H62"/>',
+  'Hourglass': '<path d="M20 12H80L50 50ZM20 88H80L50 50Z"/>',
+  'Lantern': '<rect x="20" y="20" width="60" height="60"/><circle cx="50" cy="50" r="9" fill="currentColor"/>',
+  'Hook': '<path d="M60 32V66Q60 88 40 88Q22 88 22 70"/><circle cx="60" cy="14" r="7" fill="currentColor" stroke="none"/>',
+  'Gate': '<path d="M24 76V46A26 26 0 0 1 76 46V76M12 88H88"/>',
+  'Star Seed': '<path d="M50 6 60 40 94 50 60 60 50 94 40 60 6 50 40 40Z" fill="currentColor"/>',
+  'Ripple': '<path d="M36 78A14 14 0 0 1 64 78M22 78A28 28 0 0 1 78 78M8 78A42 42 0 0 1 92 78"/>',
+  'Claw': '<path d="M24 14Q12 50 32 88M50 10Q40 50 54 90M76 14Q66 50 80 88"/>'
+};
+const glyphSvg = (name, cls = '') => `<svg class="${cls}" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GLYPH_SVG[name]}</svg>`;
+const SHAPE_SVG = {
+  Triangle: '<path d="M12 3 21 20H3Z"/>',
+  Square: '<rect x="4" y="4" width="16" height="16"/>',
+  Circle: '<circle cx="12" cy="12" r="8.5"/>',
+  Cross: '<path d="M12 3V21M3 12H21" stroke-width="4"/>'
+};
+const shapeSvg = s => `<svg class="shape" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round" aria-hidden="true">${SHAPE_SVG[s]}</svg>`;
+const COLOUR_HEX = { Amber: '#F2A93B', Violet: '#8B5CF6', Teal: '#14B8A6', Grey: '#9AA5AE' };
+const PULSE_WORDS = p => p.split('').map(c => (c === 'S' ? 'short' : 'long')).join(', ');
+const pulseIcon = p => `<span class="pulse" aria-label="${PULSE_WORDS(p)}">${p.split('').map(c => `<i class="${c === 'S' ? 's' : 'l'}"></i>`).join('')}</span>`;
+
+function tickRing(g, r1, r2, n = 12) {
+  let d = '';
+  for (let i = 0; i < n; i++) {
+    const a = (i * 360 / n) * Math.PI / 180;
+    const len = i % 3 === 0 ? r2 : r1 + (r2 - r1) * 0.45;
+    d += `M${(r1 * Math.sin(a)).toFixed(2)} ${(-r1 * Math.cos(a)).toFixed(2)}L${(len * Math.sin(a)).toFixed(2)} ${(-len * Math.cos(a)).toFixed(2)}`;
+  }
+  g.innerHTML = `<path d="${d}"/>`;
+}
+
+function mazeSvg(key) {
+  const mz = MAZES[key]; const R = [62, 46, 30, 14];
+  const P = (r, deg) => [r * Math.sin(deg * Math.PI / 180), -r * Math.cos(deg * Math.PI / 180)];
+  const f = n => n.toFixed(2);
+  let d = '';
+  for (let b = 0; b < 3; b++) {
+    const r = R[b + 1];
+    for (let s = 0; s < 12; s++) {
+      if (mz.gaps[b].includes(s)) continue;
+      const [x1, y1] = P(r, s * 30 - 15), [x2, y2] = P(r, s * 30 + 15);
+      d += `M${f(x1)} ${f(y1)}A${r} ${r} 0 0 1 ${f(x2)} ${f(y2)}`;
+    }
+  }
+  for (let i = 0; i < 3; i++) {
+    for (const b of mz.walls[i]) {
+      const a = b * 30 + 15; const [x1, y1] = P(R[i + 1], a), [x2, y2] = P(R[i], a);
+      d += `M${f(x1)} ${f(y1)}L${f(x2)} ${f(y2)}`;
+    }
+  }
+  const midR = [54, 38, 22];
+  const marks = mz.markers.map(([ring, s]) => { const [x, y] = P(midR[ring], s * 30); return `<circle class="mz-mark" cx="${f(x)}" cy="${f(y)}" r="4.6"/><circle cx="${f(x)}" cy="${f(y)}" r="1.6" fill="var(--magenta)"/>`; }).join('');
+  let nums = '';
+  for (let s = 0; s < 12; s++) { const [x, y] = P(70.5, s * 30); nums += `<text class="mz-num" x="${f(x)}" y="${f(y)}">${hourOf(s)}</text>`; }
+  return `<svg class="maze-svg" viewBox="-80 -80 160 160" role="img" aria-label="Maze ${key}">
+    <circle class="mz-lane" r="54" stroke-width="15"/><circle class="mz-lane" r="22" stroke-width="15"/>
+    <circle class="mz-wall" r="62"/><path class="mz-wall" d="${d}"/>${marks}
+    <circle class="mz-core" r="5"/>${nums}</svg>`;
+}
+
+function readingOrderSvg(sigil) {
+  const pt = ([r, c]) => [16 + c * 22.7, 16 + r * 22.7];
+  const pts = READ_ORDERS[sigil].map(pt);
+  const dots = pts.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="3.2" fill="var(--ink-2)"/>`).join('');
+  const [sx, sy] = pts[0], [ex, ey] = pts[pts.length - 1];
+  return `<svg viewBox="0 0 100 100" aria-hidden="true">${dots}
+    <polyline points="${pts.map(p => p.join(',')).join(' ')}" fill="none" stroke="var(--cyan)" stroke-width="3.2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${sx}" cy="${sy}" r="7" fill="var(--cyan)"/><circle cx="${ex}" cy="${ey}" r="6.5" fill="var(--surface)" stroke="var(--cyan)" stroke-width="3"/></svg>`;
+}
+
+// ---------- State ----------
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+};
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const state = { role: null, code: null, round: null, opened: [], active: null, strikes: 0, solved: new Set(), glyphStep: 0, camOn: false, mazeKey: 'A', lastMsg: {} };
+const validCode = v => /^\d{4}$/.test(v);
+const newCode = () => String(1000 + Math.floor(Math.random() * 9000));
+function currentCode() {
+  const input = $('#round-input');
+  let v = input.value.trim();
+  if (!validCode(v)) { v = newCode(); input.value = v; }
+  store.set('aether-round', v);
+  return Number(v);
+}
+
+// ---------- Routing ----------
+function show(view) {
+  ['home', 'field', 'shards', 'test'].forEach(v => { $('#view-' + v).hidden = v !== view; });
+  document.body.dataset.view = view;
+}
+function route() {
+  const h = location.hash.replace('#', '');
+  if (h === 'xenolinguist' || h === 'astrophysicist') { enterField(h === 'xenolinguist' ? 'xeno' : 'astro'); return; }
+  leaveField();
+  if (h === 'shards') { renderShards(); show('shards'); }
+  else if (h === 'test') { renderTest(); show('test'); }
+  else show('home');
+  window.scrollTo(0, 0);
+}
+window.addEventListener('hashchange', route);
+
+// ---------- Field ----------
+function enterField(role) {
+  const code = currentCode();
+  if (state.role !== role || state.code !== code) {
+    Object.assign(state, { role, code, round: makeRound(code), opened: [], active: null, strikes: 0, solved: new Set(), glyphStep: 0, mazeKey: 'A' });
+  }
+  $('#role-name').textContent = ROLES[role].name;
+  $('#round-label').textContent = 'Round ' + String(code).padStart(4, '0');
+  renderStrikes(); renderChips();
+  $('#sheet').hidden = true; $('#flat').hidden = true; $('#ar-bar').hidden = true; $('#lost').hidden = true;
+  $('#tray').hidden = false;
+  $('#start-cam').hidden = state.camOn;
+  setStatus(state.camOn ? idleStatus() : '');
+  show('field');
+}
+function leaveField() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  state.camOn = false; state.active = null;
+  const v = $('#cam'); if (v) v.srcObject = null;
+  AR.clear();
+}
+const idleStatus = () => 'Point the camera at a shard';
+function setStatus(text) { const el = $('#status'); el.textContent = text; el.hidden = !text; }
+function toast(text, kind = '', key = text, quiet = 2500) {
+  const now = performance.now();
+  if (state.lastMsg[key] && now - state.lastMsg[key] < quiet) return;
+  state.lastMsg[key] = now;
+  const el = $('#toast'); el.textContent = text; el.className = 'toast ' + kind; el.hidden = false; document.body.classList.add('toasting');
+  clearTimeout(toast.t); toast.t = setTimeout(() => { el.hidden = true; document.body.classList.remove('toasting'); }, 2600);
+}
+function buzz(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} }
+function renderStrikes() {
+  $$('#strikes i').forEach((el, i) => el.classList.toggle('on', i < state.strikes));
+  $('#strikes').setAttribute('aria-label', `Strikes: ${state.strikes} of 3`);
+}
+function addStrike(reason) {
+  state.strikes = Math.min(3, state.strikes + 1); renderStrikes(); buzz([80, 60, 80]);
+  const fl = $('#flash'); fl.classList.remove('go'); void fl.offsetWidth; fl.classList.add('go');
+  toast('Strike: ' + reason, 'bad', 'strike' + performance.now());
+  if (state.strikes >= 3) setTimeout(() => { $('#lost').hidden = false; }, 600);
+}
+function markSolved(id, text) {
+  state.solved.add(id); renderChips(); buzz(40); toast(text, 'good', 'solved' + id);
+}
+function renderChips() {
+  $('#chips').innerHTML = state.opened.map(id => `<button class="chip${state.solved.has(id) ? ' solved' : ''}" type="button" data-node="${id}">${NODE[id].name}</button>`).join('');
+}
+$('#chips').addEventListener('click', e => { const b = e.target.closest('.chip'); if (b) openNode(b.dataset.node); });
+
+function onShard(n, manual = false) {
+  const r = state.round; if (!r) return;
+  const id = r.shardNode[n];
+  if (!id) { toast(`Shard ${n}: no signal. This shard is empty this round.`, 'bad', 'dead' + n); return; }
+  const node = NODE[id];
+  if (node.owner !== state.role) { toast(`Shard ${n}: wrong specialist. This one belongs to the ${ROLES[node.owner].name}.`, 'bad', 'wrong' + n); return; }
+  if (state.opened.includes(id) && !manual) {
+    if (state.active === null) toast(`Shard ${n} is ${node.name}. Tap its tab below to open it.`, '', 'again' + n, 15000);
+    return;
+  }
+  if (!state.opened.includes(id)) { state.opened.push(id); renderChips(); buzz(30); }
+  openNode(id);
+}
+
+function openNode(id) {
+  state.active = id;
+  $('#sheet').hidden = true; $('#ar-bar').hidden = true; $('#flat').hidden = true;
+  if (id === 'descent') { openDescent(); return; }
+  $('#sheet-slot').textContent = `Shard ${state.round.nodeShard[id]}`;
+  $('#sheet-title').textContent = NODE[id].name;
+  $('#sheet-body').innerHTML = RENDER[id]();
+  $('#sheet-body').scrollTop = 0;
+  BIND[id] && BIND[id]();
+  $('#sheet').hidden = false;
+  setStatus('');
+}
+function closeNode() {
+  state.active = null; seenAt = performance.now();
+  $('#sheet').hidden = true; $('#ar-bar').hidden = true; $('#flat').hidden = true; $('#tray').hidden = false;
+  AR.clear();
+  setStatus(state.camOn ? idleStatus() : '');
+}
+$('#sheet-close').addEventListener('click', closeNode);
+
+// ---------- Node cards ----------
+const RENDER = {
+  conduits() {
+    const { strands } = state.round.conduits;
+    const w = 100 / strands.length;
+    const bars = strands.map((s, i) => `<g><rect x="${(i * w + w * 0.3).toFixed(2)}" y="10" width="${(w * 0.4).toFixed(2)}" height="100" rx="2" fill="${COLOUR_HEX[s.colour]}"/>
+      <text x="${(i * w + w / 2).toFixed(2)}" y="124" text-anchor="middle" font-size="9" font-weight="700" fill="var(--ink)">${i + 1}</text>
+      <text x="${(i * w + w / 2).toFixed(2)}" y="137" text-anchor="middle" font-size="7" fill="var(--ink-2)">${s.colour}</text></g>`).join('');
+    return `<p class="lead">Spectral scan of the strands, left to right. Only you see colour; the Pathfinder sees every strand as white.</p>
+      <svg class="strands" viewBox="0 0 100 142" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${strands.map((s, i) => `Strand ${i + 1} ${s.colour}`).join(', ')}">${bars}</svg>
+      <h3>Rule</h3>
+      <p class="formula">Charge = colour value, plus 1 if the cap is a solid dot, then doubled if the strand flickers.</p>
+      <table class="rule"><thead><tr><th>Colour</th><th>Value</th></tr></thead><tbody>
+      ${Object.entries(COLOURS).map(([c, v]) => `<tr><td><span class="swatch" style="background:${COLOUR_HEX[c]}"></span>${c}</td><td>${v}</td></tr>`).join('')}
+      </tbody></table>
+      <p style="margin-top:12px"><strong>Sever every strand whose charge equals the number of charged power cells.</strong> Leave the rest.</p>
+      <p class="muted">Example: Violet, solid dot, flickering = (2&nbsp;+&nbsp;1)&nbsp;×&nbsp;2&nbsp;=&nbsp;6.</p>
+      <h3>What you need</h3>
+      <p>From the Pathfinder, through the Flight Director: each strand’s cap and whether it flickers. From the Flight Director’s log: the charged power cell count. The Pathfinder makes the cuts.</p>`;
+  },
+  resonator() {
+    const solved = state.solved.has('resonator');
+    return `${solved ? '<p class="done-note">Resonance locked. This node is complete.</p>' : ''}
+      <p class="lead">Find the core’s pulse pattern in the table, take the column for the case number’s last digit, then tune and transmit.</p>
+      <div class="scroll-x"><table class="rule"><thead><tr><th>Pulse pattern</th><th>Last digit even</th><th>Last digit odd</th></tr></thead><tbody>
+      ${Object.entries(PATTERNS).map(([p, [e, o]]) => `<tr><td>${pulseIcon(p)}<div class="muted" style="font-size:14px;margin-top:4px">${PULSE_WORDS(p)}</div></td><td>${e}</td><td>${o}</td></tr>`).join('')}
+      </tbody></table></div>
+      <p class="muted" style="margin-top:8px">Zero counts as even. Frequencies are in kilohertz.</p>
+      <div class="tuner">
+        <div class="readout"><output id="freq-out">500</output><span>kilohertz</span></div>
+        <input type="range" id="freq" min="400" max="600" step="1" value="500" aria-label="Frequency in kilohertz" ${solved ? 'disabled' : ''}>
+        <div class="nudge">${[-10, -1, 1, 10].map(d => `<button class="btn small" type="button" data-d="${d}" ${solved ? 'disabled' : ''}>${d > 0 ? '+' : '−'}${Math.abs(d)}</button>`).join('')}</div>
+        <button class="btn primary wide" type="button" id="transmit" ${solved ? 'disabled' : ''}>Transmit</button>
+      </div>`;
+  },
+  glyph() {
+    const solved = state.solved.has('glyph');
+    const order = state.round.glyph.answer;
+    return `${solved ? '<p class="done-note">The Glyph Lock is open.</p>' : ''}
+      <p class="lead">Get the four glyphs from the Pathfinder and the sector sigil from the Flight Director. Tap the glyphs in the order you meet them when reading the grid the sigil’s way.</p>
+      <h3>Reading orders</h3>
+      <div class="orders">${SIGILS.map(s => `<figure>${readingOrderSvg(s)}<figcaption>${s}</figcaption></figure>`).join('')}</div>
+      <p class="muted">Start at the filled dot, finish at the ring.</p>
+      <h3>Lexicon <span class="muted" id="glyph-progress" style="font-weight:500;font-size:16px">${solved ? '' : `${state.glyphStep} of 4 entered`}</span></h3>
+      <div class="keypad" id="keypad">${GLYPH_GRID.flat().map(name => {
+        const k = order.indexOf(name); const lit = solved ? k >= 0 : (k >= 0 && k < state.glyphStep);
+        return `<button class="key${lit ? ' lit' : ''}" type="button" data-glyph="${name}" ${lit ? `data-n="${k + 1}"` : ''} ${solved ? 'disabled' : ''}>${glyphSvg(name)}<span>${name}</span></button>`;
+      }).join('')}</div>`;
+  },
+  echo() {
+    const cell = (shape, st) => ({
+      Triangle: ['Position 2', 'Same label as stage 1', 'Position = stage 2’s label', 'Same position as stage 2'],
+      Square: ['Label 4', 'Position 1', 'Same label as stage 1', 'Label = charged cell count'],
+      Circle: ['Position 4', 'One position right of stage 1 (4 wraps to 1)', 'Position 3', 'Position = stage 1’s label'],
+      Cross: ['Label 1', 'Label 3', 'Label = stage 2’s position', 'Same label as stage 3']
+    })[shape][st];
+    return `<p class="lead">Four stages. Each stage the Pathfinder sees a shape and four pads. Later stages point back to earlier presses, so ask the Flight Director for the history.</p>
+      <p class="formula">“Position N” means the pad in slot N, counting from the left. “Label N” means the pad showing N.</p>
+      <div class="scroll-x"><table class="rule"><thead><tr><th>Shape</th><th>Stage 1</th><th>Stage 2</th><th>Stage 3</th><th>Stage 4</th></tr></thead><tbody>
+      ${SHAPES.map(s => `<tr><td>${shapeSvg(s)}${s}</td>${[0, 1, 2, 3].map(i => `<td>${cell(s, i)}</td>`).join('')}</tr>`).join('')}
+      </tbody></table></div>
+      <h3>If a press is wrong</h3>
+      <p>Strike. The node resets to stage 1 with new shapes and labels, and the Flight Director clears the history.</p>`;
+  },
+  vent() {
+    return `<p class="lead">When the vent alarm sounds you have 45 seconds. Get the three gauge levels from the Pathfinder and the case number’s last digit from the Flight Director.</p>
+      <table class="rule"><thead><tr><th>Gauges</th><th>Vent</th></tr></thead><tbody>
+        <tr><td>All three equal</td><td>Centre</td></tr>
+        <tr><td>Exactly two equal</td><td>The odd one out</td></tr>
+        <tr><td>All different, last digit 0 to 4</td><td>The highest</td></tr>
+        <tr><td>All different, last digit 5 to 9</td><td>The lowest</td></tr>
+      </tbody></table>
+      <p style="margin-top:12px" class="muted">The Pathfinder vents. A wrong vent or a timeout is a strike, and the vent goes back to sleep either way.</p>`;
+  }
+};
+const BIND = {
+  resonator() {
+    const range = $('#freq'), out = $('#freq-out');
+    const set = v => { v = Math.max(400, Math.min(600, v)); range.value = v; out.textContent = v; };
+    range.addEventListener('input', () => set(+range.value));
+    $$('.nudge .btn').forEach(b => b.addEventListener('click', () => set(+range.value + Number(b.dataset.d))));
+    $('#transmit').addEventListener('click', () => {
+      const v = +range.value;
+      if (v === state.round.resonator.freq) { markSolved('resonator', `Resonance locked at ${v} kilohertz`); openNode('resonator'); }
+      else addStrike(`${v} kilohertz is the wrong frequency`);
+    });
+  },
+  glyph() {
+    $('#keypad').addEventListener('click', e => {
+      const key = e.target.closest('.key'); if (!key || key.disabled || key.classList.contains('lit')) return;
+      const want = state.round.glyph.answer[state.glyphStep];
+      if (key.dataset.glyph === want) {
+        state.glyphStep++; key.classList.add('lit'); key.dataset.n = state.glyphStep;
+        $('#glyph-progress').textContent = `${state.glyphStep} of 4 entered`;
+        if (state.glyphStep === 4) { markSolved('glyph', 'The Glyph Lock is open'); openNode('glyph'); }
+      } else {
+        key.classList.remove('miss'); void key.offsetWidth; key.classList.add('miss');
+        addStrike(`${key.dataset.glyph} is out of order or not on the lock`);
+      }
+    });
+  }
+};
+
+// ---------- The Descent ----------
+function renderMazeSeg(el, short) {
+  el.innerHTML = Object.keys(MAZES).map(k => `<button class="btn small" type="button" data-maze="${k}" aria-label="Maze ${k}" aria-pressed="${k === state.mazeKey}">${short ? k : 'Maze ' + k}</button>`).join('');
+}
+function setMaze(k) {
+  state.mazeKey = k;
+  renderMazeSeg($('#maze-seg-ar'), true); renderMazeSeg($('#maze-seg-flat'), false);
+  $('#flat-maze').innerHTML = mazeSvg(k);
+  AR.setMaze(k);
+}
+['#maze-seg-ar', '#maze-seg-flat'].forEach(sel => $(sel).addEventListener('click', e => { const b = e.target.closest('[data-maze]'); if (b) setMaze(b.dataset.maze); }));
+function openDescent() {
+  setMaze(state.mazeKey);
+  if (state.camOn && AR.ok) {
+    $('#tray').hidden = true; $('#ar-bar').hidden = false;
+    setStatus(`Hold shard ${state.round.nodeShard.descent} in view`);
+  } else {
+    $('#flat').hidden = false;
+  }
+}
+$('#flat-open').addEventListener('click', () => { $('#flat').hidden = false; });
+$('#flat-close').addEventListener('click', () => { $('#flat').hidden = true; if (!(state.camOn && AR.ok)) closeNode(); });
+$('#descent-done').addEventListener('click', closeNode);
+
+// ---------- Camera and scanning ----------
+let stream = null, W = 0, H = 0, sc = 1, lastDetect = 0, lockUntil = 0, seenShard = 0, seenAt = -1e9;
+const proc = document.createElement('canvas');
+const procCtx = proc.getContext('2d', { willReadFrequently: true });
+async function startCamera() {
+  const video = $('#cam'); const msg = $('#cam-msg');
+  msg.classList.remove('err'); msg.textContent = 'Starting the camera…';
+  try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw Object.assign(new Error('no-api'), { name: 'NoApi' });
+    if (typeof jsQR !== 'function') throw Object.assign(new Error('no-lib'), { name: 'NoLib' });
+    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+    video.srcObject = stream;
+    await video.play().catch(() => {});
+    if (!video.videoWidth) await new Promise(res => video.addEventListener('loadedmetadata', res, { once: true }));
+    sizeStage();
+    state.camOn = true; $('#start-cam').hidden = true;
+    if (!state.active) setStatus(idleStatus());
+    if (state.active === 'descent') openDescent();
+  } catch (err) {
+    let why = {
+      NotAllowedError: 'Camera access is blocked. Allow it for this page in your browser settings, or enter shard numbers by hand.',
+      SecurityError: 'This page can’t use the camera here. Open it from an HTTPS address, or enter shard numbers by hand.',
+      NotFoundError: 'No camera was found on this device. Enter shard numbers by hand.',
+      NoApi: 'This browser doesn’t give pages camera access. Open it in Safari or Chrome over HTTPS, or enter shard numbers by hand.',
+      NoLib: 'The scanner library didn’t load. Check the connection and reload.'
+    }[err.name] || `The camera didn’t start (${err.name || err.message}). Enter shard numbers by hand.`;
+    let embedded = true; try { embedded = window.self !== window.top; } catch (e) {}
+    if (embedded && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) why = 'This preview runs inside another page, which blocks the camera. Open the app from its own HTTPS address, or enter shard numbers by hand.';
+    msg.textContent = why; msg.classList.add('err');
+  }
+}
+function sizeStage() {
+  const v = $('#cam'); W = v.videoWidth; H = v.videoHeight; if (!W || !H) return;
+  sc = Math.min(1, 640 / Math.max(W, H));
+  proc.width = Math.round(W * sc); proc.height = Math.round(H * sc);
+  const ov = $('#overlay'); ov.width = W; ov.height = H;
+  AR.resize(W, H);
+}
+$('#cam').addEventListener('resize', sizeStage);
+$('#start-btn').addEventListener('click', startCamera);
+
+function drawQuad(corners) {
+  const ov = $('#overlay'); const ctx = ov.getContext('2d');
+  ctx.clearRect(0, 0, ov.width, ov.height);
+  if (!corners) return;
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--glow').trim() || '#12CFE2';
+  ctx.lineWidth = Math.max(3, W / 240); ctx.lineJoin = 'round';
+  ctx.beginPath(); corners.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.closePath(); ctx.stroke();
+}
+function detect(now) {
+  const video = $('#cam');
+  if (video.readyState < 2 || !proc.width) return;
+  procCtx.drawImage(video, 0, 0, proc.width, proc.height);
+  const img = procCtx.getImageData(0, 0, proc.width, proc.height);
+  const res = jsQR(img.data, proc.width, proc.height, { inversionAttempts: 'dontInvert' });
+  const m = res && /^AETHER-SHARD-([1-8])$/.exec(res.data.trim());
+  if (!m) { if (now > lockUntil) { $('#reticle').classList.remove('locked'); drawQuad(null); } return; }
+  const L = res.location;
+  const corners = [L.topLeftCorner, L.topRightCorner, L.bottomRightCorner, L.bottomLeftCorner].map(p => ({ x: p.x / sc, y: p.y / sc }));
+  lockUntil = now + 400; $('#reticle').classList.add('locked');
+  const n = Number(m[1]);
+  if (state.active === 'descent') {
+    seenShard = n; seenAt = now;
+    if (n === state.round.nodeShard.descent) { AR.track(corners, now); drawQuad(null); }
+    else { drawQuad(corners); toast(`That’s shard ${n}. The Descent is on shard ${state.round.nodeShard.descent}.`, '', 'other' + n); }
+    return;
+  }
+  drawQuad(corners);
+  const fresh = n !== seenShard || now - seenAt > 1500;
+  seenShard = n; seenAt = now;
+  if (fresh && $('#sheet').hidden) onShard(n);
+}
+function tick(now) {
+  requestAnimationFrame(tick);
+  if (!state.camOn || document.body.dataset.view !== 'field') return;
+  const scanning = state.active === null || state.active === 'descent';
+  if (scanning && $('#flat').hidden && now - lastDetect > 45) { lastDetect = now; detect(now); }
+  if (state.active === 'descent' && $('#flat').hidden) {
+    const seen = AR.render(now);
+    setStatus(seen ? `Tracking shard ${state.round.nodeShard.descent}: Maze ${state.mazeKey}` : `Hold shard ${state.round.nodeShard.descent} in view`);
+  }
+}
+requestAnimationFrame(tick);
+
+// ---------- Hologram ----------
+const AR = {
+  ok: false, renderer: null, scene: null, camera: null, anchor: null, holo: null, maze: null, mats: [], sm: null, lastSeen: -1e9, f: 1, W: 0, H: 0,
+  init() {
+    if (this.renderer || typeof THREE === 'undefined') return;
+    try {
+      this.renderer = new THREE.WebGLRenderer({ canvas: $('#ar'), alpha: true, antialias: true, preserveDrawingBuffer: false });
+      this.renderer.setPixelRatio(1); this.renderer.setClearColor(0x000000, 0);
+      this.scene = new THREE.Scene();
+      this.camera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
+      this.anchor = new THREE.Group(); this.anchor.matrixAutoUpdate = false; this.anchor.visible = false;
+      this.holo = new THREE.Group(); this.holo.rotation.x = -Math.PI / 2; this.anchor.add(this.holo);
+      this.scene.add(this.anchor);
+      const line = new THREE.LineBasicMaterial({ color: 0x5ff2ff, transparent: true, opacity: 0.9 });
+      const sq = [[-.5, -.5], [.5, -.5], [.5, .5], [-.5, .5]].map(([x, z]) => new THREE.Vector3(x, 0.002, z));
+      this.holo.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(sq), line));
+      this.ok = true;
+    } catch (e) { this.ok = false; this.renderer = null; }
+  },
+  resize(w, h) {
+    this.init(); if (!this.ok) return;
+    this.W = w; this.H = h; this.f = 0.78 * Math.max(w, h);
+    this.renderer.setSize(w, h, false);
+    this.camera.aspect = w / h; this.camera.fov = 2 * Math.atan(h / (2 * this.f)) * 180 / Math.PI; this.camera.updateProjectionMatrix();
+  },
+  setMaze(key) {
+    this.init(); if (!this.ok) return;
+    if (this.maze) { this.holo.remove(this.maze); disposeTree(this.maze); }
+    const built = buildMaze3D(key); this.maze = built.group; this.mats = built.mats; this.holo.add(this.maze);
+  },
+  track(corners, now) {
+    if (!this.ok) return;
+    if (!this.sm || now - this.lastSeen > 300) this.sm = corners.map(p => ({ ...p }));
+    else this.sm = this.sm.map((p, i) => ({ x: p.x + (corners[i].x - p.x) * 0.55, y: p.y + (corners[i].y - p.y) * 0.55 }));
+    const pose = poseFromHomography(solveHomography(MARKER_SRC, this.sm), this.f, this.W / 2, this.H / 2);
+    if (!pose) return;
+    const { r1, r2, r3, t } = pose;
+    this.anchor.matrix.set(
+      r1[0], r2[0], r3[0], t[0],
+      -r1[1], -r2[1], -r3[1], -t[1],
+      -r1[2], -r2[2], -r3[2], -t[2],
+      0, 0, 0, 1);
+    this.anchor.matrixWorldNeedsUpdate = true;
+    this.lastSeen = now;
+  },
+  render(now) {
+    if (!this.ok) return false;
+    const seen = now - this.lastSeen < 1200;
+    this.anchor.visible = seen;
+    if (!reduceMotion) { const k = 0.78 + 0.14 * Math.sin(now / 520); this.mats.forEach(m => { m.opacity = m.userData.base * k; }); }
+    this.renderer.render(this.scene, this.camera);
+    return seen;
+  },
+  clear() { if (this.ok) { this.anchor.visible = false; this.sm = null; this.renderer.clear(); } }
+};
+function disposeTree(obj) {
+  obj.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } });
+}
+function textSprite(text, px, color) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 128;
+  const g = c.getContext('2d');
+  g.font = `700 ${px}px "Saira Semi Condensed", "Arial Narrow", sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.lineWidth = 10; g.strokeStyle = 'rgba(3,16,23,.75)'; g.strokeText(text, 128, 64);
+  g.fillStyle = color; g.fillText(text, 128, 64);
+  const tex = new THREE.CanvasTexture(c);
+  const m = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false });
+  m.userData.base = 1;
+  const s = new THREE.Sprite(m); s.scale.set(0.36, 0.18, 1); return s;
+}
+function buildMaze3D(key) {
+  const mz = MAZES[key]; const k = 1.45 / 62; const y0 = 0.16, h = 0.13;
+  const R = [62, 46, 30, 14].map(r => r * k);
+  const group = new THREE.Group(); const mats = [];
+  const mat = (color, opacity, additive = true) => {
+    const m = new THREE.MeshBasicMaterial({ color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending });
+    m.userData.base = opacity; mats.push(m); return m;
+  };
+  const wallMat = mat(0x52eeff, 0.9), laneMat = mat(0x0a6f7d, 0.35), markMat = mat(0xff5e9c, 1), coreMat = mat(0x9ffbff, 1);
+  const rad = deg => deg * Math.PI / 180;
+  const arcWall = (r, a1, a2) => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, Math.max(4, Math.round((a2 - a1) / 0.08)), 1, true, Math.PI - a2, a2 - a1), wallMat);
+    m.position.y = y0 + h / 2; group.add(m);
+  };
+  arcWall(R[0], 0, Math.PI * 2);
+  for (let b = 0; b < 3; b++) for (let s = 0; s < 12; s++) if (!mz.gaps[b].includes(s)) arcWall(R[b + 1], rad(s * 30 - 15), rad(s * 30 + 15));
+  for (let i = 0; i < 3; i++) for (const b of mz.walls[i]) {
+    const a = rad(b * 30 + 15); const len = R[i] - R[i + 1]; const mid = (R[i] + R[i + 1]) / 2;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.022, h, len), wallMat);
+    m.position.set(mid * Math.sin(a), y0 + h / 2, -mid * Math.cos(a)); m.rotation.y = Math.PI - a; group.add(m);
+  }
+  [[R[1], R[0]], [R[3], R[2]]].forEach(([ri, ro]) => {
+    const lane = new THREE.Mesh(new THREE.RingGeometry(ri, ro, 96), laneMat); lane.rotation.x = -Math.PI / 2; lane.position.y = y0; group.add(lane);
+  });
+  const midR = [(R[0] + R[1]) / 2, (R[1] + R[2]) / 2, (R[2] + R[3]) / 2];
+  mz.markers.forEach(([ring, s]) => {
+    const a = rad(s * 30); const t = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.016, 10, 40), markMat);
+    t.rotation.x = -Math.PI / 2; t.position.set(midR[ring] * Math.sin(a), y0 + 0.03, -midR[ring] * Math.cos(a)); group.add(t);
+  });
+  const core = new THREE.Mesh(new THREE.SphereGeometry(R[3] * 0.45, 20, 14), coreMat); core.position.y = y0 + 0.06; group.add(core);
+  for (let s = 0; s < 12; s++) {
+    const a = rad(s * 30); const sp = textSprite(String(hourOf(s)), 64, '#e9fbff');
+    sp.scale.set(0.24, 0.12, 1); sp.position.set((R[0] + 0.15) * Math.sin(a), y0 + 0.05, -(R[0] + 0.15) * Math.cos(a)); group.add(sp);
+  }
+  const title = textSprite('Maze ' + key, 70, '#9ffbff'); title.scale.set(0.5, 0.25, 1); title.position.set(0, y0 + 0.45, 0); group.add(title);
+  const beam = new THREE.LineBasicMaterial({ color: 0x52eeff, transparent: true, opacity: 0.45 }); beam.userData.base = 0.45; mats.push(beam);
+  [[-.5, -.5], [.5, -.5], [.5, .5], [-.5, .5]].forEach(([x, z]) => {
+    const a = Math.atan2(x, -z); const p = [new THREE.Vector3(x, 0, z), new THREE.Vector3(R[0] * Math.sin(a), y0, -R[0] * Math.cos(a))];
+    group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(p), beam));
+  });
+  return { group, mats };
+}
+
+// ---------- Manual entry ----------
+$('#shard-pick').innerHTML = [1, 2, 3, 4, 5, 6, 7, 8].map(n => `<button class="btn" type="button" data-n="${n}">${n}</button>`).join('');
+$$('.manual-open').forEach(b => b.addEventListener('click', () => { const d = $('#manual'); d.showModal ? d.showModal() : d.setAttribute('open', ''); }));
+$('#manual-cancel').addEventListener('click', () => $('#manual').close());
+$('#shard-pick').addEventListener('click', e => {
+  const b = e.target.closest('[data-n]'); if (!b) return;
+  $('#manual').close(); $('#start-cam').hidden = true; onShard(Number(b.dataset.n), true);
+});
+$('#exit').addEventListener('click', () => { location.hash = 'home'; });
+
+// ---------- Shards sheet ----------
+function qrSvg(text) {
+  if (typeof qrcode !== 'function') return '<p>QR library didn’t load. Reload the page.</p>';
+  const q = qrcode(0, 'M'); q.addData(text); q.make();
+  const n = q.getModuleCount(), m = 4; let d = '';
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c + m} ${r + m}h1v1h-1z`;
+  return `<svg class="qr" viewBox="0 0 ${n + 2 * m} ${n + 2 * m}" shape-rendering="crispEdges" role="img" aria-label="Code for ${text}"><rect width="100%" height="100%" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+}
+function renderShards() {
+  const grid = $('#shard-grid'); if (grid.childElementCount) return;
+  grid.innerHTML = [1, 2, 3, 4, 5, 6, 7, 8].map(n => `<div class="shard-card">${qrSvg('AETHER-SHARD-' + n)}<h2>Shard ${n}</h2><p>Project Aether</p></div>`).join('');
+}
+$('#print-btn').addEventListener('click', () => window.print());
+
+// ---------- Test sheet ----------
+function renderTest() {
+  const input = $('#test-round');
+  if (!validCode(input.value.trim())) input.value = store.get('aether-round') || $('#round-input').value || newCode();
+  const code = Number(input.value); const r = makeRound(code);
+  const ans = html => `<details><summary>Show answer</summary><p style="margin:8px 0 0">${html}</p></details>`;
+  const moveWord = { right: 'right', left: 'left', in: 'step in' };
+  const dir = NODES.map(n => `<tr><td>${r.nodeSeal[n.id]}</td><td>Shard ${r.nodeShard[n.id]}</td><td>${n.name}</td><td>${ROLES[n.owner].name}</td></tr>`).join('');
+  $('#test-body').innerHTML = `
+  <section class="test-sec"><h2>Flight Director</h2><p>Round ${String(code).padStart(4, '0')}. The hull readings and the shard directory.</p>
+    <div class="test-card"><dl>
+      <dt>Case Number</dt><dd>${r.caseNumber}</dd>
+      <dt>Power cells</dt><dd><span class="cells">${r.cellStates.map(on => `<i class="${on ? 'on' : ''}"></i>`).join('')}</span> ${r.cells} charged</dd>
+      <dt>Sector sigil</dt><dd>${r.sigil}</dd></dl></div>
+    <div class="test-card"><h3>Directory</h3><div class="scroll-x"><table class="rule"><thead><tr><th>Seal word</th><th>Shard</th><th>Node</th><th>Specialist</th></tr></thead><tbody>${dir}</tbody></table></div>
+      <p class="muted" style="margin:10px 0 0">Shards ${r.deadShards.join(' and ')} show no signal this round.</p></div>
+  </section>
+  <section class="test-sec"><h2>Pathfinder</h2><p>What the Pathfinder sees in each node.</p>
+    <div class="test-card"><h3>The Conduits</h3><div class="scroll-x"><table class="rule"><thead><tr><th>Strand</th><th>Cap</th><th>Flickers</th></tr></thead><tbody>
+      ${r.conduits.strands.map((s, i) => `<tr><td>${i + 1}</td><td>${s.dot ? 'Solid dot' : 'Hollow ring'}</td><td>${s.flicker ? 'Yes' : 'No'}</td></tr>`).join('')}</tbody></table></div>
+      ${ans(`Sever strand${r.conduits.targets.length > 1 ? 's' : ''} ${r.conduits.targets.join(', ')}.`)}</div>
+    <div class="test-card"><h3>The Resonator</h3><p style="margin:0">Pulse pattern: ${pulseIcon(r.resonator.pattern)} <span class="muted">${PULSE_WORDS(r.resonator.pattern)}</span></p>
+      ${ans(`${r.resonator.freq} kilohertz.`)}</div>
+    <div class="test-card"><h3>The Glyph Lock</h3><div class="glyph-row">${r.glyph.glyphs.map(g => glyphSvg(g)).join('')}</div>
+      ${ans(r.glyph.answer.join(', ') + '.')}</div>
+    <div class="test-card"><h3>The Descent</h3><dl>
+      <dt>Markers</dt><dd>${MAZES[r.descent.maze].markers.map(([ring, s]) => `${RING_NAMES[ring]} ${hourOf(s)}`).join(' and ')}</dd>
+      <dt>Cursor starts</dt><dd>Outer ${hourOf(r.descent.start)}</dd></dl>
+      ${ans(`Maze ${r.descent.maze}. Shortest route: ${r.descent.route.map(m => moveWord[m]).join(', ')} (${r.descent.route.length} moves).`)}</div>
+    <div class="test-card"><h3>The Echo Chamber</h3><div class="scroll-x"><table class="rule"><thead><tr><th>Stage</th><th>Shape</th><th>Pad labels, left to right</th></tr></thead><tbody>
+      ${r.echo.stages.map((s, i) => `<tr><td>${i + 1}</td><td>${shapeSvg(s.shape)}${s.shape}</td><td>${s.labels.join(', ')}</td></tr>`).join('')}</tbody></table></div>
+      ${ans(r.echo.stages.map((s, i) => `Stage ${i + 1}: position ${s.position} (label ${s.label})`).join('. ') + '.')}</div>
+    <div class="test-card"><h3>The Pressure Vent</h3><p style="margin:0">Gauges, left to right: ${r.vent.gauges.join(', ')}</p>
+      ${ans(`Vent the ${r.vent.answer} gauge.`)}</div>
+  </section>`;
+}
+$('#test-load').addEventListener('click', renderTest);
+
+// ---------- Home ----------
+tickRing($('#mark-ticks'), 30, 46);
+tickRing($('#reticle-ticks'), 44, 56);
+(function initHome() {
+  const saved = store.get('aether-round');
+  $('#round-input').value = validCode(saved || '') ? saved : newCode();
+  $('#round-input').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4); if (validCode(e.target.value)) store.set('aether-round', e.target.value); });
+  $('#new-round').addEventListener('click', () => { const v = newCode(); $('#round-input').value = v; store.set('aether-round', v); });
+})();
+route();
+</script>
+</body>
+</html>
