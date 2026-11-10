@@ -928,6 +928,75 @@ function drawGlyph(ctx, name, x, y, size, color) {
       if (sig !== pf.lastDomSig) { pf.lastDomSig = sig; if (clockEl) clockEl.textContent = clock; if (strikesEl) strikesEl.textContent = `STRIKES ${strikes}/3`; }
     }
 
+    /**************************************************************************
+     * PROJECT AETHER // METRIC PINCH DETECTION + PER-PLAYER CALIBRATION
+     * Taps are measured on MediaPipe world landmarks (real-world metres, the same
+     * at any distance from the camera), with a separate engage and release distance
+     * and two camera frames in a row before a tap counts.
+     **************************************************************************/
+    const PINCH_DEFAULTS = { engage: [0, 0.025, 0.028], release: [0, 0.040, 0.044] };
+    const PINCH_CAL = (() => {
+      const base = { engage: PINCH_DEFAULTS.engage.slice(), release: PINCH_DEFAULTS.release.slice(), open: [0, 0, 0], closed: [0, 0, 0], at: 0 };
+      try {
+        const saved = JSON.parse(localStorage.getItem('aether-pinch-cal') || 'null');
+        if (saved && saved.engage && saved.release) Object.assign(base, saved);
+      } catch (e) {}
+      return base;
+    })();
+    const pfCal = { open: [[], [], []], min: [Infinity, Infinity, Infinity] };
+    const pfMedian = a => { const s = a.slice().sort((x, y) => x - y); return s[s.length >> 1]; };
+    const pfClamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    function pfRecomputePinch() {
+      for (const s of [1, 2]) {
+        const o = PINCH_CAL.open[s] || (s === 1 ? 0.095 : 0.11);
+        const c = PINCH_CAL.closed[s] || 0.014;
+        const engage = pfClamp(c + 0.25 * (o - c), 0.016, 0.035);
+        PINCH_CAL.engage[s] = engage;
+        PINCH_CAL.release[s] = Math.max(engage + 0.012, c + 0.50 * (o - c));
+      }
+    }
+    // Called once per new camera frame for each tracked hand.
+    function pfMetricPinch(hand, wl, tut) {
+      if (!wl || wl.length < 13) { hand.hasMetric = false; return; }
+      const d = (a, b) => Math.hypot(wl[a].x - wl[b].x, wl[a].y - wl[b].y, wl[a].z - wl[b].z);
+      hand.pinchM = [0, d(4, 8), d(4, 12)];
+      hand.hasMetric = true;
+      if (!hand.pinchStreak) hand.pinchStreak = [0, 0, 0];
+      for (const s of [1, 2]) hand.pinchStreak[s] = hand.pinchM[s] <= PINCH_CAL.engage[s] ? hand.pinchStreak[s] + 1 : 0;
+      if (tut && tut.active) {
+        if (tut.stepIndex === 1 && tut.fingersOpen) {
+          for (const s of [1, 2]) { pfCal.open[s].push(hand.pinchM[s]); if (pfCal.open[s].length > 150) pfCal.open[s].shift(); }
+        } else if (tut.stepIndex === 2) pfCal.min[1] = Math.min(pfCal.min[1], hand.pinchM[1]);
+        else if (tut.stepIndex === 3) pfCal.min[2] = Math.min(pfCal.min[2], hand.pinchM[2]);
+      }
+    }
+    // Same scale the rest of the rig expects: exactly FINGER_TAP_ENGAGE at the engage distance.
+    function pfMetricRatio(hand, slot, tapEngage) { return (hand.pinchM[slot] / PINCH_CAL.engage[slot]) * tapEngage; }
+    function pfCalStepStart(idx) {
+      if (idx === 1) pfCal.open = [[], [], []];
+      if (idx === 2) pfCal.min[1] = Infinity;
+      if (idx === 3) pfCal.min[2] = Infinity;
+    }
+    function pfCalStepDone(idx, log) {
+      if (idx === 1 && pfCal.open[1].length >= 10) {
+        PINCH_CAL.open = [0, pfMedian(pfCal.open[1]), pfMedian(pfCal.open[2])];
+        pfRecomputePinch();
+      } else if ((idx === 2 || idx === 3) && isFinite(pfCal.min[idx - 1])) {
+        const s = idx - 1;
+        PINCH_CAL.closed[s] = pfClamp(pfCal.min[s], 0.004, 0.03);
+        pfRecomputePinch();
+        if (idx === 3) {
+          PINCH_CAL.at = Date.now();
+          try { localStorage.setItem('aether-pinch-cal', JSON.stringify(PINCH_CAL)); } catch (e) {}
+          const cm = v => (v * 100).toFixed(1);
+          if (log) {
+            log(`[CAL] pointer tap ${cm(PINCH_CAL.engage[1])} cm // release ${cm(PINCH_CAL.release[1])} cm`);
+            log(`[CAL] middle tap ${cm(PINCH_CAL.engage[2])} cm // release ${cm(PINCH_CAL.release[2])} cm`);
+          }
+        }
+      }
+    }
+
     class SpatialHapticSynth {
       constructor() {
         this.ctx = null;
@@ -1868,6 +1937,7 @@ function drawGlyph(ctx, name, x, y, size, color) {
     }
 
     function setTutorialStep(idx) {
+      pfCalStepStart(idx);
       tutorialState.stepIndex = idx;
       tutorialState.progressHold = 0;
       const cfg = tutorialSteps[idx] || tutorialSteps[0];
@@ -2014,6 +2084,7 @@ function drawGlyph(ctx, name, x, y, size, color) {
 
     function advanceTutorialStep() {
       if (transitionState.phase !== 'NONE') return;
+      if (webcamActive) pfCalStepDone(tutorialState.stepIndex, pushLog);
       synth.init();
       synth.playFingerTapChord(tutorialState.stepIndex + 1);
       if (tutorialState.stepIndex < tutorialSteps.length - 1) {
@@ -3130,10 +3201,10 @@ function drawGlyph(ctx, name, x, y, size, color) {
                 delegate: "GPU"
               },
               runningMode: "VIDEO",
-              numHands: 2,
-              minHandDetectionConfidence: 0.35,
-              minHandPresenceConfidence: 0.35,
-              minTrackingConfidence: 0.35
+              numHands: 1,
+              minHandDetectionConfidence: 0.6,
+              minHandPresenceConfidence: 0.6,
+              minTrackingConfidence: 0.5
             }),
             14000,
             "HandLandmarker GPU"
@@ -3145,10 +3216,10 @@ function drawGlyph(ctx, name, x, y, size, color) {
                 modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
               },
               runningMode: "VIDEO",
-              numHands: 2,
-              minHandDetectionConfidence: 0.35,
-              minHandPresenceConfidence: 0.35,
-              minTrackingConfidence: 0.35
+              numHands: 1,
+              minHandDetectionConfidence: 0.6,
+              minHandPresenceConfidence: 0.6,
+              minTrackingConfidence: 0.5
             }),
             14000,
             "HandLandmarker CPU"
@@ -3366,6 +3437,12 @@ function drawGlyph(ctx, name, x, y, size, color) {
               hand.joints[j].set(rawX, rawY, rawZ);
             }
           }
+          // Taps are judged on real-world distances, once per new camera frame
+          pfMetricPinch(hand, results.worldLandmarks && results.worldLandmarks[hIdx], {
+            active: tutorialState.active,
+            stepIndex: tutorialState.stepIndex,
+            fingersOpen: hand.tipNodes.every(n => n.isFingerActive)
+          });
         } else {
           hand.missingFrames++;
           if (hand.active && hand.missingFrames > 14) {
@@ -3530,7 +3607,7 @@ function drawGlyph(ctx, name, x, y, size, color) {
               ? Math.hypot(hand.rawLm[node.cfg.idx].x - hand.rawLm[4].x, hand.rawLm[node.cfg.idx].y - hand.rawLm[4].y) / rawPalmSpan2D
               : dist3D;
             const reachMult = idx === 2 ? 0.88 : 1.0; // Middle finger gets a reach bonus
-            ratio = Math.min(dist3D, dist2D * 1.15) * reachMult;
+            ratio = (webcamActive && hand.hasMetric) ? pfMetricRatio(hand, idx, TOLERANCE.FINGER_TAP_ENGAGE) : Math.min(dist3D, dist2D * 1.15) * reachMult;
             hand.FingerRatios[idx] = ratio;
             if (idx === 1) ratioPointer = ratio;
             if (idx === 2) ratioMiddle = ratio;
@@ -3676,8 +3753,10 @@ function drawGlyph(ctx, name, x, y, size, color) {
 
         if (!hand.isPinching) {
           if (canEvaluateClick) {
-            const pReady = ratioPointer <= TOLERANCE.FINGER_TAP_ENGAGE && hand.fingerCooldowns[1] <= 0;
-            const mReady = ratioMiddle <= TOLERANCE.FINGER_TAP_ENGAGE && hand.fingerCooldowns[2] <= 0;
+            // With the camera on, a tap needs two camera frames in a row inside the engage distance
+            const metricTaps = webcamActive && hand.hasMetric;
+            const pReady = (metricTaps ? hand.pinchStreak[1] >= 2 : ratioPointer <= TOLERANCE.FINGER_TAP_ENGAGE) && hand.fingerCooldowns[1] <= 0;
+            const mReady = (metricTaps ? hand.pinchStreak[2] >= 2 : ratioMiddle <= TOLERANCE.FINGER_TAP_ENGAGE) && hand.fingerCooldowns[2] <= 0;
 
             if (pReady || mReady) {
               // Strictly pick ONLY ONE finger slot (strongest/closest ratio wins)
@@ -3701,7 +3780,11 @@ function drawGlyph(ctx, name, x, y, size, color) {
         } else {
           hand.pinchHoldTime += dt;
           const activeRatio = hand.activePinchSlot === 1 ? ratioPointer : ratioMiddle;
-          if (activeRatio > TOLERANCE.FINGER_TAP_RELEASE) {
+          // Release needs a clearly wider gap than engage (hysteresis), so a held pinch never flickers
+          const releasedNow = (webcamActive && hand.hasMetric)
+            ? hand.pinchM[hand.activePinchSlot] > PINCH_CAL.release[hand.activePinchSlot]
+            : activeRatio > TOLERANCE.FINGER_TAP_RELEASE;
+          if (releasedNow) {
             hand.isPinching = false;
             hand.fingerTaps[1] = false;
             hand.fingerTaps[2] = false;
@@ -4178,6 +4261,7 @@ function drawGlyph(ctx, name, x, y, size, color) {
       document.getElementById('pf-join').addEventListener('click', () => pfJoin(document.getElementById('pf-round').value.trim()));
       document.getElementById('pf-round').addEventListener('input', (ev) => { ev.target.value = ev.target.value.replace(/\D/g, '').slice(0, 4); });
       if (code) pfJoin(code); else { pfLoadRound(0); pfLinkUi(); }
+      if (PINCH_CAL.at) pushLog('[CAL] saved pinch calibration loaded // [T] recalibrates');
       // read-only handle for debugging and automated tests
       window.__aether = { pf, Net, echoPress, get selectedOrb() { return selectedCardId; }, get carousel() { return carouselState; }, get phase() { return transitionState.phase; } };
     })();
