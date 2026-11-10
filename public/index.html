@@ -249,7 +249,7 @@ summary { cursor: pointer; font: 500 11px/1.4 var(--font-mono); letter-spacing: 
 /* ---------- Live room ---------- */
 .clock { font: 500 15px/1 var(--font-mono); letter-spacing: .06em; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
 .clock.alert { color: var(--alert); border-color: var(--alert); }
-.role.soon { opacity: .55; cursor: default; }
+.role[data-role="pathfinder"]::after { border-color: #22C55E; }
 .role[data-role="director"]::after { border-color: var(--ink); border-style: solid; border-radius: 4px; }
 .role.soon::after { border-style: dashed; }
 .lost.won h2 { color: var(--ok); }
@@ -335,11 +335,11 @@ summary { cursor: pointer; font: 500 11px/1.4 var(--font-mono); letter-spacing: 
       <span class="role-name">Flight Director</span>
       <span class="role-job">Opens the room for the crew: join code, timer, strikes, the shard directory and the comms log.</span>
     </a>
-    <div class="role soon" data-role="pathfinder" aria-disabled="true">
-      <span class="kicker">Neural diver // Headset // In development</span>
+    <a class="role" href="pathfinder" data-role="pathfinder" id="pathfinder-link">
+      <span class="kicker">Neural diver // Webcam hands or headset</span>
       <span class="role-name">Pathfinder</span>
-      <span class="role-job">Inside the Monolith: sees every node and acts on them.</span>
-    </div>
+      <span class="role-job">Inside the Monolith: reads every node, cuts the Conduits and presses the Echo Chamber.</span>
+    </a>
   </div>
   <nav class="home-links">
     <a href="#shards">Print the shards</a>
@@ -1882,6 +1882,7 @@ function renderDirector() {
 }
 const ROLE_TITLES = { xeno: 'Xenolinguist', astro: 'Astrophysicist', pathfinder: 'Pathfinder', director: 'Flight Director' };
 const escapeHtml = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+$('#pathfinder-link').addEventListener('click', e => { e.preventDefault(); location.href = `pathfinder?round=${String(currentCode()).padStart(4, '0')}`; });
 $('#dir-start').addEventListener('click', () => Net.send({ type: 'start' }));
 $('#dir-reset').addEventListener('click', () => { if (confirm('Reset this round for the whole crew?')) Net.send({ type: 'reset' }); });
 $('#dir-new').addEventListener('click', () => { const v = newCode(); $('#round-input').value = v; store.set('aether-round', v); enterDirector(); });

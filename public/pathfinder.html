@@ -1,0 +1,4231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Project Aether // Pathfinder</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono for Swiss minimalist architectural typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- Three.js r128 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <style>
+    :root {
+      --ink-dark: #0f172a;
+      --ink-muted: #64748b;
+      --bg-ethereal: #f8fafc;
+    }
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: var(--bg-ethereal);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: var(--ink-dark);
+    }
+    #webgl-container {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      cursor: crosshair;
+    }
+    .scanlines {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2;
+      background: radial-gradient(
+        circle at center,
+        transparent 62%,
+        rgba(226, 232, 240, 0.65) 100%
+      );
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 3D WebGL Viewport -->
+  <div id="webgl-container"></div>
+  <div class="scanlines"></div>
+
+  <!-- Live Webcam Video Element (Must NOT use display:none or browsers pause frame decoding!) -->
+  <video id="webcam-video" autoplay playsinline muted style="position:fixed; top:0; left:0; width:320px; height:240px; opacity:0.001; pointer-events:none; z-index:-1;"></video>
+
+  <!-- Minimizable Corner Optical Sensor & Hand Tracking Telemetry Log Box -->
+  <div id="cam-hud-preview" class="fixed bottom-4 left-4 z-20 pointer-events-auto w-[340px] flex flex-col gap-2.5 bg-white/90 backdrop-blur-md border border-slate-300/90 rounded-2xl p-3 shadow-lg transition-all duration-300 opacity-100">
+    <!-- Header Bar with Minimize / Expand Button -->
+    <div class="flex items-center justify-between font-mono text-[10px] pb-1.5 border-b border-slate-200/90">
+      <div class="flex items-center gap-1.5 font-semibold text-slate-900">
+        <span id="cam-hud-dot" class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+        <span id="cam-hud-title">OPTICAL SENSOR</span>
+        <span id="cam-hud-hands" class="ml-1 text-emerald-600 font-bold">HANDS: 0</span>
+      </div>
+      <button id="btn-minimize-hud" type="button" class="px-2 py-0.5 rounded bg-slate-200/90 hover:bg-slate-300 active:scale-95 text-slate-700 font-semibold text-[9px] transition cursor-pointer">
+        MINIMIZE [-]
+      </button>
+    </div>
+
+    <!-- Project Aether room link -->
+    <div id="pf-link-panel" class="flex flex-col gap-1.5 pb-2 border-b border-slate-200/90 font-mono text-[10px]">
+      <div class="flex items-center gap-2">
+        <span class="text-slate-400">ROUND</span>
+        <input id="pf-round" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="0000" class="w-[64px] px-1.5 py-0.5 rounded border border-slate-300 bg-white text-slate-900 font-semibold tracking-widest" />
+        <button id="pf-join" type="button" class="px-2 py-0.5 rounded bg-slate-900 text-white font-semibold text-[9px] cursor-pointer">JOIN</button>
+        <span id="pf-link-state" class="ml-auto font-semibold text-slate-500">NO ROOM</span>
+      </div>
+      <div class="flex items-center justify-between">
+        <span class="text-slate-400">PATHFINDER // MISSION</span>
+        <span><span id="pf-clock" class="text-slate-900 font-semibold text-[13px] tracking-wider">--:--</span>
+        <span id="pf-strikes" class="ml-2 text-slate-500">STRIKES 0/3</span></span>
+      </div>
+    </div>
+
+    <!-- Collapsible Body Content -->
+    <div id="cam-hud-body" class="flex flex-col gap-2.5">
+      <!-- Top Section: Camera Feed + Primary Sensor Status -->
+      <div class="flex items-start gap-3">
+        <div class="relative shrink-0">
+          <canvas id="cam-debug-canvas" width="144" height="108" class="rounded-lg bg-slate-900 border border-slate-700/60 block"></canvas>
+          <span id="cam-fps-pill" class="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-slate-900/80 text-[9px] font-mono text-emerald-400">60 FPS</span>
+        </div>
+        <div class="flex-1 min-w-0 font-mono text-[10px] leading-tight text-slate-700">
+          <div id="cam-hud-status" class="text-slate-500 truncate">CLICK TO ENABLE CAM</div>
+
+          <!-- Live 3-Finger Activity Pills -->
+          <div class="mt-2">
+            <div class="text-[9px] text-slate-400 uppercase tracking-wider mb-1">Active Fingers</div>
+            <div class="flex items-center gap-1">
+              <span id=" pill-thumb" class="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 font-semibold text-[9px]">THM</span>
+              <span id="pill-pointer" class="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 font-semibold text-[9px]">PTR [1]</span>
+              <span id="pill-middle" class="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 font-semibold text-[9px]">MID [2]</span>
+            </div>
+          </div>
+
+          <!-- Current Exclusive Gesture Mutex Lock -->
+          <div class="mt-2 pt-1.5 border-t border-slate-200/80 flex items-center justify-between">
+            <span class="text-slate-400">LOCK:</span>
+            <span id="cam-hud-gesture" class="font-semibold text-slate-900 truncate ml-1">IDLE // STANDBY</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Middle Section: Live Pinch Threshold & Swipe Axis Velocity Meters -->
+      <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200/90 font-mono text-[10px]">
+        <!-- Left Click [1] Thumb + Pointer Proximity Meter -->
+        <div class="bg-slate-100/90 rounded-lg p-1.5 border border-slate-200/80">
+          <div class="flex justify-between items-center text-[9px] text-slate-600 mb-1">
+            <span>[1] L-CLICK (PTR)</span>
+            <span id="cam-lclick-val" class="font-semibold text-slate-800">0%</span>
+          </div>
+          <div class="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+            <div id="cam-lclick-bar" class="h-full bg-emerald-500 transition-all duration-75" style="width: 0%;"></div>
+          </div>
+        </div>
+
+        <!-- Right Click [2] Thumb + Middle Proximity Meter -->
+        <div class="bg-slate-100/90 rounded-lg p-1.5 border border-slate-200/80">
+          <div class="flex justify-between items-center text-[9px] text-slate-600 mb-1">
+            <span>[2] R-CLICK (MID)</span>
+            <span id="cam-rclick-val" class="font-semibold text-slate-800">0%</span>
+          </div>
+          <div class="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+            <div id="cam-rclick-bar" class="h-full bg-sky-500 transition-all duration-75" style="width: 0%;"></div>
+          </div>
+        </div>
+
+        <!-- Swipe Scroll Bar Axis & Velocity Sensor -->
+        <div class="col-span-2 bg-slate-100/90 rounded-lg p-1.5 border border-slate-200/80">
+          <div class="flex justify-between items-center text-[9px] text-slate-600 mb-1">
+            <span>ARC SWIPE: <strong id="cam-swipe-state" class="text-slate-900">READY</strong></span>
+            <span id="cam-swipe-vel" class="font-semibold text-slate-700">ΔX: 0% / 11%</span>
+          </div>
+          <div class="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden relative">
+            <div id="cam-swipe-bar" class="h-full bg-amber-500 transition-all duration-75" style="width: 0%;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Section: Live Hand Tracking Event Log Stream -->
+      <div class="pt-1.5 border-t border-slate-200/90 font-mono">
+        <div class="flex items-center justify-between text-[9px] text-slate-400 uppercase tracking-wider mb-1">
+          <span>Hand Tracking Log</span>
+          <span id="cam-coords-readout" class="text-slate-500">X:0.00 Y:0.00</span>
+        </div>
+        <div id="cam-log-stream" class="bg-slate-900 text-slate-200 rounded-lg p-2 text-[10px] leading-relaxed h-[68px] overflow-hidden flex flex-col justify-end">
+          <div class="text-slate-400">[SYS] optical sensor box initialized</div>
+          <div class="text-emerald-400">[TUT] click anywhere or press [C] for camera</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HIDDEN LEGACY DOM REFS (Keeps all internal JS bindings intact with zero 2D visual clutter) -->
+  <div class="hidden">
+    <div id="clock-time"></div>
+    <div id="clock-date"></div>
+    <button id="btn-reset"></button>
+    <button id="btn-webcam"><span id="status-dot"></span><span id="btn-webcam-text"></span></button>
+    <button id="btn-explode"><span id="btn-explode-text"></span></button>
+    <button id="btn-audio"></button>
+    <span id="fps-readout">60</span>
+    <span id="inference-readout">0.0</span>
+    <span id="filter-readout">1€</span>
+    <span id="mode-readout">SIM</span>
+    <button id="btn-filter">1€</button>
+    <p id="interaction-hint"></p>
+    <div id="pinch-meter-bar"></div>
+    <span id="pinch-state-text">OPEN</span>
+    <span id="cam-led"></span>
+    <span id="cam-status-tag"></span>
+    <canvas id="pip-canvas" width="320" height="240"></canvas>
+    <div id="pip-overlay-msg"><button id="btn-pip-enable"></button></div>
+    <div id="toast-box"><span id="toast-text"></span></div>
+    <div id="log-history"></div>
+    <span id="hand-presence-dot"></span>
+    <span id="hand-presence-text"></span>
+    <span id="cockpit-zone-badge"></span>
+    <span id="gesture-badge"></span>
+    <span id="active-target-label"></span>
+    <button id="btn-cam-inline"></button>
+    <button id="btn-zones-toggle"></button>
+    <button id="btn-tutorial-restart"></button>
+  </div>
+
+  <!-- MAIN APPLICATION MODULE -->
+  <script type="module">
+    /**************************************************************************
+     * 1. CORE DOM REFERENCES & LOGGING ENGINE
+     **************************************************************************/
+    const container = document.getElementById('webgl-container');
+    const logHistoryEl = document.getElementById('log-history');
+    const handPresenceDot = document.getElementById('hand-presence-dot');
+    const handPresenceText = document.getElementById('hand-presence-text');
+    const cockpitZoneBadge = document.getElementById('cockpit-zone-badge');
+    const gestureBadge = document.getElementById('gesture-badge');
+    const activeTargetLabel = document.getElementById('active-target-label');
+    const pinchMeterBar = document.getElementById('pinch-meter-bar');
+    const pinchStateText = document.getElementById('pinch-state-text');
+    const camLogStreamEl = document.getElementById('cam-log-stream');
+
+    const logBuffer = [
+      "[SYS] rotunda.scale // monumental 3d initialized",
+      "[TUT] step 01/04 // click anywhere or [C] for camera"
+    ];
+
+    let updateNearRingLogTexture = null;
+
+    function pushLog(msg) {
+      const cleanMsg = `[${new Date().toLocaleTimeString([], { hour12: false, minute: '2-digit', second: '2-digit' })}] ${msg}`;
+      if (logBuffer[logBuffer.length - 1] === cleanMsg) return;
+      logBuffer.push(cleanMsg);
+      if (logBuffer.length > 4) logBuffer.shift();
+      if (logHistoryEl) {
+        logHistoryEl.innerHTML = logBuffer.map(line => `<div>${line}</div>`).join('');
+      }
+      if (camLogStreamEl) {
+        camLogStreamEl.innerHTML = logBuffer.slice(-3).map((line, idx, arr) => {
+          const isLast = idx === arr.length - 1;
+          const colorClass = isLast ? 'text-emerald-400 font-semibold' : 'text-slate-400';
+          return `<div class="${colorClass} truncate">${line}</div>`;
+        }).join('');
+      }
+      if (typeof updateNearRingLogTexture === 'function') {
+        updateNearRingLogTexture();
+      }
+    }
+
+    function showToast(msg) {
+      pushLog(msg);
+    }
+
+    /**************************************************************************
+     * 2. PROCEDURAL WEB AUDIO PSEUDO-HAPTIC SYNTHESIZER
+     **************************************************************************/
+    /**************************************************************************
+     * PROJECT AETHER // PATHFINDER CONTENT LAYER
+     * Each orb is one game node. Center Stage shows what only the Pathfinder
+     * can see. The Conduits and the Echo Chamber are opened from here.
+     **************************************************************************/
+/*LOGIC-START*/
+const CODENAMES = ['Heron','Osprey','Marlin','Cypress','Granite','Vesper','Pelican','Linden'];
+const SEALS = ['Harbour','Falcon','Meridian','Thistle','Juniper','Orchid','Summit','Willow','Quarry','Tundra','Beacon','Cinder'];
+const SIGILS = ['Spiral','Eye','Crown','Wave'];
+const NODES = [
+  { id: 'conduits',  name: 'The Conduits',      slot: 1, owner: 'astro' },
+  { id: 'resonator', name: 'The Resonator',     slot: 2, owner: 'astro' },
+  { id: 'glyph',     name: 'The Glyph Lock',    slot: 3, owner: 'xeno' },
+  { id: 'descent',   name: 'The Descent',       slot: 4, owner: 'xeno' },
+  { id: 'echo',      name: 'The Echo Chamber',  slot: 5, owner: 'xeno' },
+  { id: 'vent',      name: 'The Pressure Vent', slot: 6, owner: 'astro' }
+];
+const NODE = Object.fromEntries(NODES.map(n => [n.id, n]));
+const ROLES = { xeno: { name: 'Xenolinguist' }, astro: { name: 'Astrophysicist' } };
+const COLOURS = { Amber: 3, Violet: 2, Teal: 1, Grey: 0 };
+const PATTERNS = { SSSL: [412, 538], SSLL: [426, 571], SLSL: [449, 503], SLLS: [463, 594], LSSL: [478, 517], LSLS: [485, 552], LLSS: [491, 529], LLLS: [507, 586] };
+const GLYPH_GRID = [
+  ['Comet', 'Fork', 'Almond', 'Ladder'],
+  ['Twin Moons', 'Knot', 'Arrowhead', 'Broken Ring'],
+  ['Spine', 'Hourglass', 'Lantern', 'Hook'],
+  ['Gate', 'Star Seed', 'Ripple', 'Claw']
+];
+const READ_ORDERS = {
+  Spiral: [[0,0],[0,1],[0,2],[0,3],[1,3],[2,3],[3,3],[3,2],[3,1],[3,0],[2,0],[1,0],[1,1],[1,2],[2,2],[2,1]],
+  Eye: [], Crown: [], Wave: []
+};
+for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) READ_ORDERS.Eye.push([r, c]);
+for (let r = 3; r >= 0; r--) for (let c = 0; c < 4; c++) READ_ORDERS.Crown.push([r, c]);
+for (let r = 0; r < 4; r++) for (let i = 0; i < 4; i++) READ_ORDERS.Wave.push([r, r % 2 === 0 ? i : 3 - i]);
+const SHAPES = ['Triangle', 'Square', 'Circle', 'Cross'];
+const hourOf = s => (s === 0 ? 12 : s);
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function charge(colour, dot, flicker) { return (COLOURS[colour] + (dot ? 1 : 0)) * (flicker ? 2 : 1); }
+function resonatorFreq(pattern, last) { return PATTERNS[pattern][last % 2]; }
+function glyphAnswer(glyphs, sigil) {
+  const idx = {};
+  READ_ORDERS[sigil].forEach(([r, c], i) => { idx[GLYPH_GRID[r][c]] = i; });
+  return glyphs.slice().sort((a, b) => idx[a] - idx[b]);
+}
+// hist[stage] = [positionPressed, labelPressed]; labels = label at positions 1..4; returns position 1..4
+function echoPress(stage, shape, labels, hist, cells) {
+  const posOf = lab => labels.indexOf(lab) + 1;
+  if (stage === 1) return { Triangle: 2, Square: posOf(4), Circle: 4, Cross: posOf(1) }[shape];
+  if (stage === 2) return { Triangle: posOf(hist[1][1]), Square: 1, Circle: (hist[1][0] % 4) + 1, Cross: posOf(3) }[shape];
+  if (stage === 3) return { Triangle: hist[2][1], Square: posOf(hist[1][1]), Circle: 3, Cross: posOf(hist[2][0]) }[shape];
+  return { Triangle: hist[2][0], Square: posOf(cells), Circle: hist[1][1], Cross: posOf(hist[3][1]) }[shape];
+}
+function ventAnswer(g, last) {
+  const [L, C, R] = g;
+  if (L === C && C === R) return 'Centre';
+  if (L === C) return 'Right';
+  if (L === R) return 'Centre';
+  if (C === R) return 'Left';
+  const names = ['Left', 'Centre', 'Right'];
+  return last <= 4 ? names[g.indexOf(Math.max(...g))] : names[g.indexOf(Math.min(...g))];
+}
+// ---- The Descent: ball maze generated per round ----
+// Cells are [ring, sector]; ring 0 outer, 1 middle, 2 inner; sector 0..11 (0 = 12 o'clock).
+// walls[ring] = radial wall between sector b and b+1. gaps[0] outer->middle, gaps[1] middle->inner,
+// gaps[2] inner->core (always two neighbouring sectors, so the ball fits through).
+const RING_NAMES = ['Outer', 'Middle', 'Inner', 'Core'];
+function ballNeighbours(mz, r, s) {
+  const out = [];
+  for (const d of [1, -1]) { const y = (s + d + 12) % 12; const b = d === 1 ? s : y; if (!mz.walls[r].includes(b)) out.push([r, y]); }
+  if (mz.gaps[r].includes(s)) out.push(r < 2 ? [r + 1, s] : [3, 0]);
+  if (r > 0 && mz.gaps[r - 1].includes(s)) out.push([r - 1, s]);
+  return out;
+}
+function ballRoute(mz, start, traps) {
+  const key = c => c[0] + ',' + c[1]; const blocked = new Set(traps.map(key));
+  const q = [[[0, start]]]; const seen = new Set([key([0, start])]);
+  while (q.length) {
+    const path = q.shift(); const [r, s] = path[path.length - 1];
+    if (r === 3) return path;
+    for (const n of ballNeighbours(mz, r, s)) {
+      const k = key(n); if (seen.has(k) || blocked.has(k)) continue;
+      seen.add(k); q.push(path.concat([n]));
+    }
+  }
+  return null;
+}
+function genBallMaze(rnd) {
+  const int = n => Math.floor(rnd() * n);
+  const pickSet = (k) => { const a = [...Array(12).keys()]; for (let i = 11; i > 0; i--) { const j = int(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a.slice(0, k).sort((x, y) => x - y); };
+  for (let tries = 1; tries <= 400; tries++) {
+    const walls = [pickSet(3 + int(2)), pickSet(3 + int(2)), pickSet(2 + int(2))];
+    const c = int(12);
+    const gaps = [pickSet(3 + int(2)), pickSet(3 + int(2)), [c, (c + 1) % 12].sort((x, y) => x - y)];
+    const mz = { walls, gaps };
+    const start = int(12);
+    const obvious = ballRoute(mz, start, []);
+    if (!obvious || obvious.length < 6) continue;
+    const inside = obvious.filter(([r]) => r === 1 || r === 2);
+    const t1 = inside[int(inside.length)];
+    const detour = ballRoute(mz, start, [t1]);
+    if (!detour) continue;
+    // second trapdoor: a cell entered straight through a gap, off the detour, that still leaves a safe route
+    const entry = [];
+    for (let r = 0; r < 2; r++) for (const s of gaps[r]) entry.push([r + 1, s]);
+    const onDetour = new Set(detour.map(c => c.join()));
+    const options = entry.filter(c => !onDetour.has(c.join()) && c.join() !== t1.join());
+    if (!options.length) continue;
+    const t2 = options[int(options.length)];
+    const safe = ballRoute(mz, start, [t1, t2]);
+    if (!safe || safe.length - obvious.length > 10 || safe.length > 19) continue;
+    return { walls, gaps, traps: [t1, t2], start, route: safe, obvious, tries };
+  }
+  return null;
+}
+function makeRound(code) {
+  const rnd = mulberry32(((code * 2654435761) >>> 0) ^ 0x9E3779B9);
+  const int = n => Math.floor(rnd() * n);
+  const pick = a => a[int(a.length)];
+  const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = int(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const codename = pick(CODENAMES);
+  const digits = String(int(10000)).padStart(4, '0');
+  const last = Number(digits[3]);
+  const cells = 1 + int(4);
+  const cellStates = shuffle([0, 1, 2, 3].map(i => i < cells));
+  const sigil = pick(SIGILS);
+  const shards = shuffle([1, 2, 3, 4, 5, 6, 7, 8]);
+  const seals = shuffle(SEALS);
+  const nodeShard = {}, shardNode = {}, nodeSeal = {};
+  NODES.forEach((n, i) => { nodeShard[n.id] = shards[i]; shardNode[shards[i]] = n.id; nodeSeal[n.id] = seals[i]; });
+  const deadShards = shards.slice(6).sort((a, b) => a - b);
+  let strands, targets;
+  do {
+    const n = 4 + int(3);
+    strands = Array.from({ length: n }, () => ({ colour: pick(Object.keys(COLOURS)), dot: rnd() < 0.5, flicker: rnd() < 0.5 }));
+    targets = strands.map((s, i) => (charge(s.colour, s.dot, s.flicker) === cells ? i + 1 : 0)).filter(Boolean);
+  } while (targets.length < 1 || targets.length > 3);
+  const pattern = pick(Object.keys(PATTERNS));
+  const glyphs = shuffle(GLYPH_GRID.flat()).slice(0, 4);
+  const stages = []; const hist = {};
+  for (let st = 1; st <= 4; st++) {
+    const shape = pick(SHAPES); const labels = shuffle([1, 2, 3, 4]);
+    const position = echoPress(st, shape, labels, hist, cells);
+    hist[st] = [position, labels[position - 1]];
+    stages.push({ shape, labels, position, label: labels[position - 1] });
+  }
+  const gauges = [1 + int(5), 1 + int(5), 1 + int(5)];
+  return {
+    code, caseNumber: codename + ' ' + digits, last, cells, cellStates, sigil, nodeShard, shardNode, nodeSeal, deadShards,
+    conduits: { strands, targets },
+    resonator: { pattern, freq: resonatorFreq(pattern, last) },
+    glyph: { glyphs, answer: glyphAnswer(glyphs, sigil) },
+    descent: genBallMaze(rnd),
+    echo: { stages },
+    vent: { gauges, answer: ventAnswer(gauges, last) }
+  };
+}
+// ---- Pose from a tracked square (QR corners) ----
+// Marker plane coordinates: QR side = 1, X right, Y down. Order: top-left, top-right, bottom-right, bottom-left.
+const MARKER_SRC = [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]];
+function solveLinear(A, b) {
+  const n = b.length; const M = A.map((row, i) => row.concat(b[i]));
+  for (let c = 0; c < n; c++) {
+    let p = c; for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+    if (Math.abs(M[p][c]) < 1e-12) return null;
+    [M[c], M[p]] = [M[p], M[c]];
+    for (let r = 0; r < n; r++) {
+      if (r === c) continue; const f = M[r][c] / M[c][c];
+      for (let k = c; k <= n; k++) M[r][k] -= f * M[c][k];
+    }
+  }
+  return M.map((row, i) => row[n] / row[i]);
+}
+function solveHomography(src, dst) {
+  const A = [], b = [];
+  for (let i = 0; i < 4; i++) {
+    const [X, Y] = src[i]; const u = dst[i].x, v = dst[i].y;
+    A.push([X, Y, 1, 0, 0, 0, -u * X, -u * Y]); b.push(u);
+    A.push([0, 0, 0, X, Y, 1, -v * X, -v * Y]); b.push(v);
+  }
+  const h = solveLinear(A, b);
+  return h ? h.concat(1) : null;
+}
+function poseFromHomography(H, f, cx, cy) {
+  if (!H) return null;
+  const col = j => [H[j], H[3 + j], H[6 + j]];
+  const kinv = c => [(c[0] - cx * c[2]) / f, (c[1] - cy * c[2]) / f, c[2]];
+  const norm = v => Math.hypot(v[0], v[1], v[2]);
+  const scale = (v, k) => v.map(x => x * k);
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const m1 = kinv(col(0)), m2 = kinv(col(1)), m3 = kinv(col(2));
+  let lam = 2 / (norm(m1) + norm(m2));
+  if (m3[2] * lam < 0) lam = -lam;
+  let r1 = scale(m1, lam); r1 = scale(r1, 1 / norm(r1));
+  let r2 = scale(m2, lam); const d = dot(r1, r2);
+  r2 = [r2[0] - d * r1[0], r2[1] - d * r1[1], r2[2] - d * r1[2]]; r2 = scale(r2, 1 / norm(r2));
+  const r3 = [r1[1] * r2[2] - r1[2] * r2[1], r1[2] * r2[0] - r1[0] * r2[2], r1[0] * r2[1] - r1[1] * r2[0]];
+  return { r1, r2, r3, t: scale(m3, lam) };
+}
+// Estimate focal length (pixels) from a square marker's homography; principal point assumed at image centre.
+function estimateFocal(H, cx, cy) {
+  if (!H) return null;
+  const col = j => [H[j] - cx * H[6 + j], H[3 + j] - cy * H[6 + j], H[6 + j]];
+  const [a1, b1, c1] = col(0), [a2, b2, c2] = col(1);
+  const A1 = c1 * c2, B1 = -(a1 * a2 + b1 * b2);
+  const A2 = c1 * c1 - c2 * c2, B2 = (a2 * a2 + b2 * b2) - (a1 * a1 + b1 * b1);
+  const den = A1 * A1 + A2 * A2;
+  if (!(den > 0)) return null;
+  const f2 = (A1 * B1 + A2 * B2) / den;
+  if (!(f2 > 0)) return null;
+  const f = Math.sqrt(f2);
+  const tilt = Math.hypot(c1, c2) * f / Math.hypot(a1, b1);
+  return tilt > 0.3 ? f : null;
+}
+/*LOGIC-END*/
+const GLYPH_SVG = {
+  'Comet': '<circle cx="34" cy="34" r="14" fill="currentColor"/><path d="M46 46 86 86M40 55 70 85M55 40 85 70"/>',
+  'Fork': '<path d="M50 10V44M24 44H76M24 44V88M50 44V88M76 44V88"/>',
+  'Almond': '<path d="M10 50Q50 8 90 50Q50 92 10 50Z"/>',
+  'Ladder': '<path d="M32 10V90M68 10V90M32 30H68M32 50H68M32 70H68"/>',
+  'Twin Moons': '<path d="M14 14A36 36 0 0 1 14 86A22 36 0 0 0 14 14ZM86 14A36 36 0 0 0 86 86A22 36 0 0 1 86 14Z" fill="currentColor" stroke="none"/>',
+  'Knot': '<path d="M50 50C10 6 90 6 50 50C10 94 90 94 50 50Z"/>',
+  'Arrowhead': '<path d="M50 12 86 84H14Z" fill="currentColor"/>',
+  'Broken Ring': '<path d="M64.8 18.3A35 35 0 1 1 35.2 18.3"/>',
+  'Spine': '<path d="M50 8V92M38 22H62M38 36H62M38 50H62M38 64H62M38 78H62"/>',
+  'Hourglass': '<path d="M20 12H80L50 50ZM20 88H80L50 50Z"/>',
+  'Lantern': '<rect x="20" y="20" width="60" height="60"/><circle cx="50" cy="50" r="9" fill="currentColor"/>',
+  'Hook': '<path d="M60 32V66Q60 88 40 88Q22 88 22 70"/><circle cx="60" cy="14" r="7" fill="currentColor" stroke="none"/>',
+  'Gate': '<path d="M24 76V46A26 26 0 0 1 76 46V76M12 88H88"/>',
+  'Star Seed': '<path d="M50 6 60 40 94 50 60 60 50 94 40 60 6 50 40 40Z" fill="currentColor"/>',
+  'Ripple': '<path d="M36 78A14 14 0 0 1 64 78M22 78A28 28 0 0 1 78 78M8 78A42 42 0 0 1 92 78"/>',
+  'Claw': '<path d="M24 14Q12 50 32 88M50 10Q40 50 54 90M76 14Q66 50 80 88"/>'
+};
+// Draws one lexicon glyph onto a 2D canvas from the same shapes the phone UI uses.
+function drawGlyph(ctx, name, x, y, size, color) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(size / 100, size / 100);
+  ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = color; ctx.fillStyle = color;
+  const re = /<(path|circle|rect)([^>]*)\/>/g; let m;
+  while ((m = re.exec(GLYPH_SVG[name]))) {
+    const attr = k => { const r = new RegExp('\\b' + k + '="([^"]*)"').exec(m[2]); return r ? r[1] : null; };
+    let p;
+    if (m[1] === 'path') p = new Path2D(attr('d'));
+    else if (m[1] === 'circle') { p = new Path2D(); p.arc(+attr('cx'), +attr('cy'), +attr('r'), 0, Math.PI * 2); }
+    else { p = new Path2D(); p.rect(+attr('x'), +attr('y'), +attr('width'), +attr('height')); }
+    if (attr('fill') === 'currentColor') ctx.fill(p);
+    if (attr('stroke') !== 'none') ctx.stroke(p);
+  }
+  ctx.restore();
+}
+
+    const store = {
+      get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+      set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+    };
+    const validRound = v => /^\d{4}$/.test(v);
+    const fmtClock = ms => { const t = Math.ceil(ms / 1000); return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; };
+    const INTERACTIVE_NODES = ['conduits', 'echo'];
+    const NODE_HINTS = {
+      conduits: 'READ CAPS & FLICKER  //  CUT WHEN TOLD',
+      resonator: 'WATCH THE PULSE  //  CALL SHORT & LONG',
+      glyph: 'DESCRIBE EACH GLYPH BY ITS SHAPE',
+      descent: 'TRAPDOORS GLOW RED  //  GIVE RING & HOUR',
+      echo: 'READ SHAPE & LABELS  //  PRESS WHEN TOLD',
+      vent: 'INTERRUPT  //  GAUGES APPEAR ON ALARM'
+    };
+    const pf = {
+      code: 0, round: null, engaged: null, cursor: 0,
+      cut: new Set(), wrongCut: new Set(), echoStage: 1, echoHist: {}, echoAttempt: 0, echoStages: [],
+      solved: new Set(), strikes: 0, epoch: null, lastDomSig: ''
+    };
+    function pfLoadRound(code) {
+      pf.code = code; pf.round = makeRound(code); pf.epoch = null; pfResetProgress();
+    }
+    function pfResetProgress() {
+      Object.assign(pf, { engaged: null, cursor: 0, cut: new Set(), wrongCut: new Set(), echoStage: 1, echoHist: {}, echoAttempt: 0, solved: new Set(), strikes: 0 });
+      pf.echoStages = pf.round.echo.stages.map(s => ({ shape: s.shape, labels: s.labels.slice() }));
+      pfDirtyAll();
+    }
+    function pfEchoNewStages() {
+      const rnd = mulberry32(((pf.code * 7919) + pf.echoAttempt * 104729) >>> 0);
+      const int = n => Math.floor(rnd() * n);
+      pf.echoStages = [1, 2, 3, 4].map(() => {
+        const labels = [1, 2, 3, 4];
+        for (let i = 3; i > 0; i--) { const j = int(i + 1); [labels[i], labels[j]] = [labels[j], labels[i]]; }
+        return { shape: SHAPES[int(4)], labels };
+      });
+    }
+    function pfDirtyAll() {
+      if (typeof backScreenCards !== 'undefined') backScreenCards.forEach(sc => { sc.lastDrawSig = null; });
+      if (typeof hudCards !== 'undefined') hudCards.forEach(c => { c.lastDrawSig = null; });
+    }
+    const pfLinked = () => Net.online && !!Net.state;
+    const pfPhase = () => (pfLinked() ? Net.state.phase : 'offline');
+    function pfNodeSolved(node) { return pf.solved.has(node) || (pfLinked() && Net.state.solved.includes(node)); }
+    function pfRoomLine() {
+      if (!Net.online) return Net.failed ? 'OFFLINE  //  LOCAL PRACTICE' : (Net.round !== null ? 'LINKING  //  ROOM ' + String(Net.round).padStart(4, '0') : 'NO ROOM  //  ENTER ROUND');
+      const s = Net.state; if (!s) return 'LINKING';
+      if (s.phase === 'lobby') return 'LOBBY  //  WAITING FOR FLIGHT DIRECTOR';
+      if (s.phase === 'live') return `MISSION ${fmtClock(Net.remaining())}  //  STRIKES ${s.strikes}/3`;
+      return s.phase === 'won' ? 'CORE BREACHED  //  ROUND WON' : `LINK LOST  //  ${String(s.outcome || '').toUpperCase()}`;
+    }
+
+    // ---- actions ----
+    function pfTryEngage(card) {
+      const node = card.node;
+      if (!INTERACTIVE_NODES.includes(node)) return false;
+      if (pfNodeSolved(node)) { showToast(`${NODE[node].name.toLowerCase()} is already open`); return true; }
+      const ph = pfPhase();
+      if (ph === 'lobby') { showToast('waiting for the flight director to start the round'); pushLog('[RUN] round not started // engage blocked'); return true; }
+      if (ph === 'won' || ph === 'lost') { showToast('the round is over'); return true; }
+      pf.engaged = node; pf.cursor = 0;
+      redrawCockpitZoneHeaders(`ENGAGED // ${NODE[node].name.toUpperCase()}`, card.accent);
+      pushLog(`[RUN] engaged ${NODE[node].name.toLowerCase()} // swipe to choose`);
+      showToast(`engaged ${NODE[node].name.toLowerCase()} // swipe to choose, [1] to act, [2] to release`);
+      return true;
+    }
+    function pfDisengage() {
+      if (!pf.engaged) return;
+      pushLog(`[RUN] released ${NODE[pf.engaged].name.toLowerCase()}`);
+      pf.engaged = null;
+      redrawCockpitZoneHeaders('PEDESTAL CAROUSEL & SCREEN BAYS ACTIVE', '#22c55e');
+    }
+    function pfCount(node) { return node === 'conduits' ? pf.round.conduits.strands.length : 4; }
+    function pfMoveCursor(d) {
+      if (!pf.engaged) return;
+      const n = pfCount(pf.engaged); pf.cursor = (pf.cursor + d + n) % n;
+      if (typeof synth !== 'undefined') synth.playHoverChirp();
+    }
+    function pfStrike(reason) {
+      synth.playExplodeChord(false);
+      if (pfLinked()) {
+        if (Net.state.phase === 'live') Net.send({ type: 'strike', node: pf.engaged, reason });
+        else showToast('practice strike // round not live');
+      } else { pf.strikes = Math.min(3, pf.strikes + 1); }
+      pushLog(`[STRIKE] ${reason.toLowerCase()}`);
+      showToast(`strike // ${reason.toLowerCase()}`);
+      redrawCockpitZoneHeaders(`STRIKE // ${reason.toUpperCase()}`, '#e11d48');
+    }
+    function pfSolve(node, text) {
+      pf.solved.add(node); pf.engaged = null;
+      if (pfLinked() && Net.state.phase === 'live') Net.send({ type: 'solved', node });
+      synth.playExplodeChord(true);
+      pushLog(`[OPEN] ${text.toLowerCase()}`);
+      showToast(text.toLowerCase());
+      redrawCockpitZoneHeaders(`${NODE[node].name.toUpperCase()} // OPEN`, '#22c55e');
+      pfDirtyAll();
+    }
+    function pfAct() {
+      const node = pf.engaged; if (!node) return;
+      if (node === 'conduits') {
+        const i = pf.cursor + 1;
+        if (pf.cut.has(i) || pf.wrongCut.has(i)) { showToast(`strand ${i} is already cut`); return; }
+        if (pf.round.conduits.targets.includes(i)) {
+          pf.cut.add(i); synth.playPinchLock(); pushLog(`[CUT] strand ${i} severed`);
+          if (pf.round.conduits.targets.every(t => pf.cut.has(t))) pfSolve('conduits', 'The Conduits are open');
+          else showToast(`strand ${i} severed`);
+        } else { pf.wrongCut.add(i); pfStrike(`Strand ${i} should not have been cut`); }
+      } else if (node === 'echo') {
+        const st = pf.echoStage, S = pf.echoStages[st - 1];
+        const want = echoPress(st, S.shape, S.labels, pf.echoHist, pf.round.cells);
+        const pos = pf.cursor + 1;
+        if (pos === want) {
+          pf.echoHist[st] = [pos, S.labels[pos - 1]]; pf.echoStage += 1; synth.playPinchLock();
+          pushLog(`[ECHO] stage ${st} // pressed position ${pos}`);
+          if (pf.echoStage > 4) pfSolve('echo', 'The Echo Chamber is open');
+          else showToast(`stage ${st} cleared // stage ${pf.echoStage} of 4`);
+        } else {
+          pf.echoAttempt += 1; pfEchoNewStages(); pf.echoHist = {}; pf.echoStage = 1;
+          pfStrike(`Wrong pad at stage ${st}`);
+        }
+      }
+    }
+
+    // ---- drawing helpers (canvas 2D) ----
+    function pfDrawSigil(ctx, name, cx, cy, s, color) {
+      ctx.save(); ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = Math.max(3, s * 0.07); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.beginPath();
+      if (name === 'Spiral') {
+        for (let t = 0; t <= Math.PI * 4.2; t += 0.08) { const r = s * 0.04 + (s * 0.46) * (t / (Math.PI * 4.2)); const x = cx + r * Math.cos(t), y = cy + r * Math.sin(t); t === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
+        ctx.stroke();
+      } else if (name === 'Eye') {
+        ctx.moveTo(cx - s * 0.5, cy); ctx.quadraticCurveTo(cx, cy - s * 0.5, cx + s * 0.5, cy); ctx.quadraticCurveTo(cx, cy + s * 0.5, cx - s * 0.5, cy); ctx.stroke();
+        ctx.beginPath(); ctx.arc(cx, cy, s * 0.17, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(cx, cy, s * 0.06, 0, Math.PI * 2); ctx.fill();
+      } else if (name === 'Crown') {
+        [[-0.45, 0.3], [-0.45, -0.18], [-0.22, 0.06], [0, -0.34], [0.22, 0.06], [0.45, -0.18], [0.45, 0.3]].forEach(([x, y], i) => (i ? ctx.lineTo(cx + x * s, cy + y * s) : ctx.moveTo(cx + x * s, cy + y * s)));
+        ctx.closePath(); ctx.stroke();
+      } else {
+        for (const off of [-0.14, 0.14]) { ctx.moveTo(cx - s * 0.5, cy + off * s); for (let x = -0.5; x <= 0.5001; x += 0.025) ctx.lineTo(cx + x * s, cy + off * s + Math.sin(x * Math.PI * 4) * s * 0.1); }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    function pfDrawShape(ctx, shape, cx, cy, s, color) {
+      ctx.save(); ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = s * 0.08; ctx.lineJoin = 'round';
+      ctx.beginPath();
+      if (shape === 'Triangle') { ctx.moveTo(cx, cy - s * 0.45); ctx.lineTo(cx + s * 0.45, cy + s * 0.38); ctx.lineTo(cx - s * 0.45, cy + s * 0.38); ctx.closePath(); ctx.stroke(); }
+      else if (shape === 'Square') { ctx.strokeRect(cx - s * 0.38, cy - s * 0.38, s * 0.76, s * 0.76); }
+      else if (shape === 'Circle') { ctx.arc(cx, cy, s * 0.4, 0, Math.PI * 2); ctx.stroke(); }
+      else { ctx.lineWidth = s * 0.16; ctx.lineCap = 'butt'; ctx.moveTo(cx, cy - s * 0.45); ctx.lineTo(cx, cy + s * 0.45); ctx.moveTo(cx - s * 0.45, cy); ctx.lineTo(cx + s * 0.45, cy); ctx.stroke(); }
+      ctx.restore();
+    }
+    function pfDrawMaze(ctx, mz, cx, cy, R0, now) {
+      const R = [0.95, 0.71, 0.47, 0.26].map(k => k / 0.95 * R0);
+      const mid = [(R[0] + R[1]) / 2, (R[1] + R[2]) / 2, (R[2] + R[3]) / 2];
+      const P = (r, deg) => [cx + r * Math.sin(deg * Math.PI / 180), cy - r * Math.cos(deg * Math.PI / 180)];
+      ctx.save();
+      ctx.fillStyle = '#2b3446'; ctx.beginPath(); ctx.arc(cx, cy, R0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#f3f5f7'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(cx, cy, R0, 0, Math.PI * 2); ctx.stroke();
+      for (let b = 0; b < 3; b++) for (let s = 0; s < 12; s++) {
+        if (mz.gaps[b].includes(s)) continue;
+        ctx.beginPath(); ctx.arc(cx, cy, R[b + 1], (s * 30 - 15 - 90) * Math.PI / 180, (s * 30 + 15 - 90) * Math.PI / 180); ctx.stroke();
+      }
+      for (let i = 0; i < 3; i++) for (const b of mz.walls[i]) {
+        const a = b * 30 + 15; const [x1, y1] = P(R[i + 1], a), [x2, y2] = P(R[i], a);
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      }
+      ctx.fillStyle = '#07090d'; ctx.beginPath(); ctx.arc(cx, cy, R[3] * 0.42, 0, Math.PI * 2); ctx.fill();
+      const pulse = 0.6 + 0.4 * Math.sin(now / 260);
+      mz.traps.forEach(([ring, s]) => {
+        const [x, y] = P(mid[ring], s * 30);
+        ctx.fillStyle = `rgba(225, 29, 72, ${0.35 * pulse})`; ctx.beginPath(); ctx.arc(x, y, 22, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#e11d48'; ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.fill();
+      });
+      const [bx, by] = P(mid[0], mz.start * 30);
+      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(bx, by, 10, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#ec4899'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(bx, by, 6, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#64748b'; ctx.font = '600 17px "JetBrains Mono", monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for (let s = 0; s < 12; s++) { const [x, y] = P(R0 + 22, s * 30); ctx.fillText(String(s === 0 ? 12 : s), x, y); }
+      ctx.restore();
+    }
+    const PF_PULSE = { S: 300, L: 900, gap: 350, rest: 2000 };
+    function pfPulseOn(now) {
+      const pat = pf.round.resonator.pattern.split('');
+      const total = pat.reduce((a, c) => a + PF_PULSE[c] + PF_PULSE.gap, 0) + PF_PULSE.rest;
+      let t = now % total;
+      for (const c of pat) { if (t < PF_PULSE[c]) return true; t -= PF_PULSE[c]; if (t < PF_PULSE.gap) return false; t -= PF_PULSE.gap; }
+      return false;
+    }
+
+    // ---- the Center Stage card for one node ----
+    function pfDrawCard(sc) {
+      const cfg = cardConfigs.find(c => c.id === sc.orbId) || cardConfigs[0];
+      const node = cfg.node, r = pf.round, now = performance.now();
+      const solved = pfNodeSolved(node);
+      const isCenter = sc.bayIdx === 2;
+      const engaged = pf.engaged === node && isCenter;
+      const line = pfRoomLine();
+      let dyn = '';
+      if (node === 'conduits') dyn = `${[...pf.cut].join(',')}/${[...pf.wrongCut].join(',')}/${r.conduits.strands.some(s => s.flicker) ? Math.floor(now / 140) % 2 : 0}`;
+      else if (node === 'resonator') dyn = pfPulseOn(now) ? 1 : 0;
+      else if (node === 'echo') dyn = `${pf.echoStage}|${pf.echoAttempt}`;
+      else if (node === 'descent') dyn = Math.floor(now / 130) % 12;
+      const sig = `${sc.orbId}|${sc.bayIdx}|${sc.isHovered ? 1 : 0}|${sc.isGrabbed ? 1 : 0}|${solved ? 1 : 0}|${engaged ? 1 : 0}|${engaged ? pf.cursor : -1}|${dyn}|${line}|${pf.code}`;
+      if (sc.lastDrawSig === sig) return;
+      sc.lastDrawSig = sig;
+      const ctx = sc.ctx, W = 1024, H = 680;
+      const bay = screenBays[sc.bayIdx] || screenBays[2];
+      const ink = '#0f172a', mute = '#64748b', accent = cfg.accent, ok = '#16a34a';
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = sc.isGrabbed ? 'rgba(255,255,255,0.97)' : 'rgba(248,250,252,0.94)';
+      ctx.fillRect(16, 16, W - 32, H - 32);
+      ctx.strokeStyle = engaged ? accent : (sc.isHovered ? accent : ink);
+      ctx.lineWidth = engaged ? 8 : (sc.isHovered ? 6 : 3);
+      ctx.strokeRect(16, 16, W - 32, H - 32);
+      ctx.fillStyle = solved ? ok : (engaged ? accent : ink);
+      ctx.fillRect(16, 16, W - 32, 14);
+      // header
+      ctx.textBaseline = 'alphabetic';
+      ctx.font = '600 19px "JetBrains Mono", monospace'; ctx.textAlign = 'left'; ctx.fillStyle = mute;
+      ctx.fillText(`${bay.name}  //  ORB ${cfg.title}`, 48, 70);
+      ctx.textAlign = 'right'; ctx.fillStyle = ink;
+      ctx.fillText(`SEAL WORD  //  ${r.nodeSeal[node].toUpperCase()}`, W - 48, 70);
+      ctx.strokeStyle = 'rgba(15,23,42,0.14)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(48, 90); ctx.lineTo(W - 48, 90); ctx.stroke();
+      // title + status pill
+      ctx.textAlign = 'left'; ctx.fillStyle = ink; ctx.font = '200 62px "Inter", sans-serif';
+      ctx.fillText(NODE[node].name, 46, 160);
+      const pill = solved ? 'OPEN' : (node === 'vent' ? 'INTERRUPT' : 'SEALED');
+      ctx.font = '600 18px "JetBrains Mono", monospace';
+      const pw = ctx.measureText(pill).width + 32;
+      ctx.strokeStyle = solved ? ok : ink; ctx.lineWidth = 2; ctx.strokeRect(W - 48 - pw, 124, pw, 40);
+      ctx.fillStyle = solved ? ok : ink; ctx.textAlign = 'center'; ctx.fillText(pill, W - 48 - pw / 2, 151);
+      ctx.textAlign = 'left'; ctx.fillStyle = accent; ctx.font = '600 18px "JetBrains Mono", monospace';
+      ctx.fillText(NODE_HINTS[node], 48, 198);
+      // diagram frame
+      const DX = 40, DY = 220, DW = 600, DH = 384;
+      ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2; ctx.strokeRect(DX, DY, DW, DH);
+      pfDrawNode(ctx, node, DX, DY, DW, DH, engaged, now, solved);
+      // hull telemetry block
+      const HX = 664, HW = 320;
+      ctx.fillStyle = ink; ctx.fillRect(HX, DY, HW, 250);
+      ctx.fillStyle = '#ffffff'; ctx.font = '600 18px "JetBrains Mono", monospace'; ctx.textAlign = 'left';
+      ctx.fillText('HULL TELEMETRY', HX + 24, DY + 38);
+      ctx.fillStyle = '#94a3b8'; ctx.font = '500 14px "JetBrains Mono", monospace';
+      ctx.fillText('CASE NUMBER', HX + 24, DY + 76);
+      ctx.fillStyle = '#ffffff'; ctx.font = '600 30px "JetBrains Mono", monospace';
+      ctx.fillText(r.caseNumber.toUpperCase(), HX + 24, DY + 112);
+      ctx.fillStyle = '#94a3b8'; ctx.font = '500 14px "JetBrains Mono", monospace';
+      ctx.fillText('POWER CELLS', HX + 24, DY + 152);
+      ctx.fillText('SIGIL', HX + 214, DY + 152);
+      r.cellStates.forEach((on, i) => {
+        const x = HX + 24 + i * 40, y = DY + 166;
+        ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, 26, 56, 8); else ctx.rect(x, y, 26, 56);
+        if (on) { ctx.fillStyle = '#22c55e'; ctx.fill(); } else { ctx.strokeStyle = '#475569'; ctx.lineWidth = 3; ctx.stroke(); }
+      });
+      pfDrawSigil(ctx, r.sigil, HX + 252, DY + 196, 66, '#ffffff');
+      // room status strip
+      ctx.fillStyle = '#f1f5f9'; ctx.fillRect(HX, DY + 266, HW, DH - 266);
+      ctx.strokeStyle = ink; ctx.lineWidth = 2; ctx.strokeRect(HX, DY + 266, HW, DH - 266);
+      const parts = line.split('  //  ');
+      ctx.fillStyle = mute; ctx.font = '500 14px "JetBrains Mono", monospace'; ctx.fillText('ROOM LINK', HX + 24, DY + 296);
+      ctx.fillStyle = ink; ctx.font = '600 24px "JetBrains Mono", monospace'; ctx.fillText(parts[0] || '', HX + 24, DY + 332);
+      ctx.fillStyle = mute; ctx.font = '500 15px "JetBrains Mono", monospace'; ctx.fillText((parts[1] || '').slice(0, 30), HX + 24, DY + 360);
+      // controls footer
+      let foot;
+      if (!isCenter) foot = 'PINNED  //  [1] ON ITS ORB TO BRING IT TO CENTER STAGE';
+      else if (engaged) foot = 'ENGAGED  //  SWIPE TO CHOOSE  ·  [1] ACT  ·  [2] RELEASE';
+      else if (INTERACTIVE_NODES.includes(node) && !solved) foot = '[1] AGAIN TO ENGAGE THIS NODE';
+      else foot = 'READ-ONLY  //  DESCRIBE IT TO THE FLIGHT DIRECTOR';
+      ctx.fillStyle = engaged ? accent : mute; ctx.font = '600 17px "JetBrains Mono", monospace'; ctx.textAlign = 'left';
+      ctx.fillText(foot, 48, 644);
+      sc.texture.needsUpdate = true;
+    }
+    function pfDrawNode(ctx, node, X, Y, W, H, engaged, now, solved) {
+      const r = pf.round, ink = '#0f172a', mute = '#64748b', cx = X + W / 2, cy = Y + H / 2;
+      ctx.save(); ctx.textBaseline = 'alphabetic';
+      if (node === 'conduits') {
+        const n = r.conduits.strands.length, phase = Math.floor(now / 140) % 2;
+        r.conduits.strands.forEach((s, i) => {
+          const x = X + W * (i + 0.5) / n, top = Y + 52, y1 = Y + 82, y2 = Y + H - 70, num = i + 1;
+          const isCut = pf.cut.has(num), isWrong = pf.wrongCut.has(num);
+          ctx.lineCap = 'round';
+          if (isCut || isWrong) {
+            ctx.strokeStyle = isWrong ? '#e11d48' : '#94a3b8'; ctx.lineWidth = 10;
+            ctx.beginPath(); ctx.moveTo(x, y1); ctx.lineTo(x, (y1 + y2) / 2 - 18); ctx.moveTo(x, (y1 + y2) / 2 + 18); ctx.lineTo(x, y2); ctx.stroke();
+          } else {
+            ctx.strokeStyle = s.flicker && phase ? 'rgba(15,23,42,0.16)' : ink; ctx.lineWidth = 10;
+            ctx.beginPath(); ctx.moveTo(x, y1); ctx.lineTo(x, y2); ctx.stroke();
+          }
+          ctx.beginPath(); ctx.arc(x, top, 16, 0, Math.PI * 2);
+          if (s.dot) { ctx.fillStyle = ink; ctx.fill(); } else { ctx.strokeStyle = ink; ctx.lineWidth = 5; ctx.stroke(); }
+          ctx.fillStyle = isWrong ? '#e11d48' : mute; ctx.font = '600 24px "JetBrains Mono", monospace'; ctx.textAlign = 'center';
+          ctx.fillText(isCut || isWrong ? 'CUT' : String(num), x, Y + H - 26);
+          if (engaged && pf.cursor === i) { ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 5; ctx.strokeRect(x - 36, Y + 22, 72, H - 36); }
+        });
+      } else if (node === 'resonator') {
+        const on = pfPulseOn(now);
+        ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2;
+        for (const rr of [150, 170]) { ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2); ctx.stroke(); }
+        ctx.beginPath(); ctx.arc(cx, cy, 118, 0, Math.PI * 2);
+        if (on) { ctx.fillStyle = ink; ctx.fill(); } else { ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 6; ctx.stroke(); }
+        ctx.fillStyle = on ? '#ffffff' : mute; ctx.font = '600 18px "JetBrains Mono", monospace'; ctx.textAlign = 'center';
+        ctx.fillText(on ? 'PULSE' : 'CORE', cx, cy + 6);
+        ctx.fillStyle = mute; ctx.font = '500 15px "JetBrains Mono", monospace';
+        ctx.fillText('WAIT FOR THE LONG DARK GAP, THEN WATCH ONE LOOP', cx, Y + H - 16);
+      } else if (node === 'glyph') {
+        r.glyph.glyphs.forEach((g, i) => {
+          const bx = X + 20 + (i % 2) * 290, by = Y + 18 + Math.floor(i / 2) * 182;
+          ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2; ctx.strokeRect(bx, by, 270, 166);
+          drawGlyph(ctx, g, bx + 70, by + 18, 130, solved ? '#16a34a' : ink);
+          ctx.fillStyle = mute; ctx.font = '600 22px "JetBrains Mono", monospace'; ctx.textAlign = 'left';
+          ctx.fillText(String(i + 1), bx + 14, by + 32);
+        });
+      } else if (node === 'descent') {
+        pfDrawMaze(ctx, r.descent, cx - 40, cy + 6, 160, now);
+        ctx.fillStyle = mute; ctx.font = '500 14px "JetBrains Mono", monospace'; ctx.textAlign = 'left';
+        ctx.fillText('RED  //  TRAPDOOR', X + W - 168, Y + 40);
+        ctx.fillText('BALL //  START', X + W - 168, Y + 66);
+        ctx.fillStyle = '#e11d48'; ctx.beginPath(); ctx.arc(X + W - 184, Y + 35, 8, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#ec4899'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(X + W - 184, Y + 61, 7, 0, Math.PI * 2); ctx.stroke();
+      } else if (node === 'echo') {
+        const st = Math.min(4, pf.echoStage), S = pf.echoStages[st - 1];
+        for (let i = 0; i < 4; i++) {
+          const x = X + 44 + i * 44, y = Y + 40;
+          ctx.beginPath(); ctx.arc(x, y, 13, 0, Math.PI * 2);
+          if (solved || i + 1 < pf.echoStage) { ctx.fillStyle = '#16a34a'; ctx.fill(); }
+          else { ctx.strokeStyle = i + 1 === pf.echoStage ? ink : '#cbd5e1'; ctx.lineWidth = i + 1 === pf.echoStage ? 5 : 3; ctx.stroke(); }
+        }
+        ctx.fillStyle = ink; ctx.font = '600 20px "JetBrains Mono", monospace'; ctx.textAlign = 'left';
+        ctx.fillText(solved ? 'ALL STAGES CLEARED' : `STAGE ${st} OF 4`, X + 226, Y + 47);
+        ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2; ctx.strokeRect(X + 24, Y + 90, 200, 220);
+        pfDrawShape(ctx, S.shape, X + 124, Y + 196, 130, solved ? '#16a34a' : ink);
+        S.labels.forEach((lab, i) => {
+          const px = X + 258 + i * 84, py = Y + 120;
+          ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(px, py, 70, 160, 10); else ctx.rect(px, py, 70, 160);
+          ctx.fillStyle = '#ffffff'; ctx.fill(); ctx.strokeStyle = ink; ctx.lineWidth = 3; ctx.stroke();
+          ctx.fillStyle = ink; ctx.font = '300 58px "Inter", sans-serif'; ctx.textAlign = 'center'; ctx.fillText(String(lab), px + 35, py + 102);
+          ctx.fillStyle = mute; ctx.font = '500 13px "JetBrains Mono", monospace'; ctx.fillText(`POS ${i + 1}`, px + 35, py + 196);
+          if (engaged && pf.cursor === i) { ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 6; ctx.strokeRect(px - 8, py - 8, 86, 176); }
+        });
+      } else {
+        ['LEFT', 'CENTRE', 'RIGHT'].forEach((lab, i) => {
+          const gx = X + 110 + i * 170, gy = Y + 50;
+          ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 4; ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(gx, gy, 80, 250, 12); else ctx.rect(gx, gy, 80, 250); ctx.stroke();
+          ctx.fillStyle = mute; ctx.font = '600 16px "JetBrains Mono", monospace'; ctx.textAlign = 'center'; ctx.fillText(lab, gx + 40, gy + 284);
+        });
+        ctx.fillStyle = ink; ctx.font = '600 18px "JetBrains Mono", monospace'; ctx.textAlign = 'center';
+        ctx.fillText('DORMANT  //  NO ALARM', cx, Y + H - 14);
+      }
+      ctx.restore();
+    }
+
+    // ---- room link (same protocol as the phones and the Flight Director) ----
+    const Net = {
+      ws: null, round: null, role: 'pathfinder', online: false, everOnline: false, failed: false, state: null, offset: 0, retry: 0, timer: null,
+      deviceId: (() => { let v = store.get('aether-device'); if (!v) { v = Math.random().toString(36).slice(2, 12); store.set('aether-device', v); } return v; })(),
+      connect(round) { this.close(); this.round = round; this.retry = 0; this.failed = false; this.everOnline = false; this.open(); },
+      open() {
+        this.timer = null;
+        if (!/^https?:$/.test(location.protocol)) { this.failed = true; pfLinkUi(); return; }
+        let ws;
+        try { ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/room/${String(this.round).padStart(4, '0')}/ws?role=pathfinder&id=${this.deviceId}`); }
+        catch (e) { this.failed = true; pfLinkUi(); return; }
+        this.ws = ws;
+        ws.onopen = () => { this.everOnline = true; this.failed = false; this.retry = 0; this.online = true; this.send({ type: 'hello' }); pushLog(`[LINK] joined room ${String(this.round).padStart(4, '0')}`); pfLinkUi(); };
+        ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch (err) { return; } if (m.type === 'state') { this.offset = m.state.serverNow - Date.now(); this.state = m.state; pfOnRoomState(m.state); } };
+        ws.onclose = () => {
+          if (this.ws !== ws) return;
+          this.ws = null; this.online = false;
+          if (!this.everOnline) { this.failed = true; pfLinkUi(); return; }
+          pushLog('[LINK] connection dropped // retrying'); pfLinkUi();
+          if (this.round !== null) this.timer = setTimeout(() => this.open(), Math.min(8000, 700 * 2 ** this.retry++));
+        };
+      },
+      close() { clearTimeout(this.timer); this.timer = null; const ws = this.ws; this.ws = null; this.state = null; this.online = false; if (ws) { try { ws.close(); } catch (e) {} } },
+      send(m) { if (this.ws && this.ws.readyState === 1) { this.ws.send(JSON.stringify(m)); return true; } return false; },
+      remaining() { const s = this.state; if (!s) return 0; if (s.phase !== 'live') return s.remainingAtMark; return Math.max(0, s.remainingAtMark - (Date.now() + this.offset - s.markAt) * s.rate); }
+    };
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Net.round !== null && !Net.ws && Net.everOnline) { clearTimeout(Net.timer); Net.open(); } });
+    function pfOnRoomState(st) {
+      if (pf.epoch === null) pf.epoch = st.epoch;
+      else if (st.epoch !== pf.epoch) { pf.epoch = st.epoch; pfResetProgress(); pushLog('[RUN] flight director reset the round'); showToast('round reset by the flight director'); }
+      if (st.strikes > (pf.lastStrikes ?? st.strikes)) pushLog(`[STRIKE] crew strikes now ${st.strikes}/3`);
+      if (pf.lastPhase && pf.lastPhase !== st.phase) {
+        if (st.phase === 'live') { pushLog('[RUN] round started'); showToast('round started // mission clock running'); }
+        if (st.phase === 'won') { pf.engaged = null; redrawCockpitZoneHeaders('CORE BREACHED // ROUND WON', '#22c55e'); showToast('core breached // the monolith is yours'); synth.playExplodeChord(true); }
+        if (st.phase === 'lost') { pf.engaged = null; redrawCockpitZoneHeaders(`LINK LOST // ${String(st.outcome).toUpperCase()}`, '#e11d48'); showToast(`link lost // ${String(st.outcome).toLowerCase()}`); }
+      }
+      pf.lastStrikes = st.strikes; pf.lastPhase = st.phase;
+      pfLinkUi();
+    }
+    function pfLinkUi() {
+      const stateEl = document.getElementById('pf-link-state');
+      if (stateEl) {
+        stateEl.textContent = Net.online ? 'LINKED' : (Net.failed ? 'OFFLINE' : (Net.round !== null ? 'LINKING' : 'NO ROOM'));
+        stateEl.className = 'ml-auto font-semibold ' + (Net.online ? 'text-emerald-600' : (Net.failed ? 'text-rose-600' : 'text-slate-500'));
+      }
+    }
+    function pfJoin(code) {
+      if (!validRound(String(code))) { showToast('enter a 4-digit round number'); return; }
+      store.set('aether-round', String(code));
+      pfLoadRound(Number(code));
+      document.getElementById('pf-round').value = String(code);
+      Net.connect(Number(code));
+      pfLinkUi();
+    }
+    function pfFrame(now) {
+      if (typeof backScreenCards !== 'undefined') backScreenCards.forEach(sc => pfDrawCard(sc));
+      const clockEl = document.getElementById('pf-clock'), strikesEl = document.getElementById('pf-strikes');
+      const st = Net.state;
+      const clock = pfLinked() ? (st.phase === 'live' ? fmtClock(Net.remaining()) : st.phase.toUpperCase()) : '--:--';
+      const strikes = pfLinked() ? st.strikes : pf.strikes;
+      const sig = `${clock}|${strikes}`;
+      if (sig !== pf.lastDomSig) { pf.lastDomSig = sig; if (clockEl) clockEl.textContent = clock; if (strikesEl) strikesEl.textContent = `STRIKES ${strikes}/3`; }
+    }
+
+    class SpatialHapticSynth {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+      }
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) this.ctx = new AudioCtx();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+      playHoverChirp() {
+        if (!this.enabled || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(520, now);
+        osc.frequency.exponentialRampToValueAtTime(880, now + 0.045);
+        gain.gain.setValueAtTime(0.04, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+        osc.connect(gain).connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.055);
+      }
+      playPinchLock() {
+        if (!this.enabled || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(140, now);
+        osc.frequency.exponentialRampToValueAtTime(320, now + 0.065);
+        gain.gain.setValueAtTime(0.075, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.075);
+        osc.connect(gain).connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.08);
+      }
+      playDetentTick(speed = 1.0) {
+        if (!this.enabled || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        const baseFreq = Math.min(1400, 680 + speed * 140);
+        osc.frequency.setValueAtTime(baseFreq, now);
+        osc.frequency.exponentialRampToValueAtTime(220, now + 0.022);
+        gain.gain.setValueAtTime(0.032, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.024);
+        osc.connect(gain).connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.028);
+      }
+      playReleaseThrow(speed = 1.0) {
+        if (!this.enabled || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(420, now);
+        osc.frequency.exponentialRampToValueAtTime(180 + Math.min(400, speed * 90), now + 0.11);
+        gain.gain.setValueAtTime(0.045, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+        osc.connect(gain).connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.125);
+      }
+      playFingerTapChord(slot = 1) {
+        if (!this.enabled || !this.ctx) return;
+        const freqs = [330, 523.25, 659.25, 783.99, 987.77];
+        const f = freqs[slot] || 523.25;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(f, now);
+        osc.frequency.exponentialRampToValueAtTime(f * 1.25, now + 0.09);
+        gain.gain.setValueAtTime(0.06, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+        osc.connect(gain).connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.12);
+      }
+      playExplodeChord(expanding = true) {
+        if (!this.enabled || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const notes = expanding ? [261.63, 329.63, 392.00, 523.25] : [523.25, 392.00, 329.63, 261.63];
+        notes.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.03);
+          gain.gain.setValueAtTime(0.035, now + idx * 0.03);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.03 + 0.18);
+          osc.connect(gain).connect(this.ctx.destination);
+          osc.start(now + idx * 0.03);
+          osc.stop(now + idx * 0.03 + 0.19);
+        });
+      }
+      playHandPresenceCue(acquired = true) {
+        if (!this.enabled || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(acquired ? 340 : 520, now);
+        osc.frequency.exponentialRampToValueAtTime(acquired ? 620 : 240, now + 0.12);
+        gain.gain.setValueAtTime(0.035, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+        osc.connect(gain).connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.14);
+      }
+    }
+    const synth = new SpatialHapticSynth();
+
+    /**************************************************************************
+     * 3. MONUMENTAL ROTUNDA 3D SCENE, CAMERA, RENDERER & SHARED STATE
+     **************************************************************************/
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xf4f6f9);
+    scene.fog = new THREE.FogExp2(0xf4f6f9, 0.015);
+
+    // Wide, monumental perspective pulled far back so the chamber feels vast
+    const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 160);
+    const CAM_BASE_Y = 1.15;
+    const CAM_BASE_Z = 12.2;
+    camera.position.set(0, CAM_BASE_Y, CAM_BASE_Z);
+    camera.lookAt(0, 0.25, -2.5);
+
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: "high-performance",
+      stencil: false,
+      depth: true
+    });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    container.appendChild(renderer.domElement);
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.88);
+    scene.add(ambientLight);
+
+    const oculusKeyLight = new THREE.DirectionalLight(0xffffff, 0.72);
+    oculusKeyLight.position.set(2.5, 18.0, 4.0);
+    scene.add(oculusKeyLight);
+
+    const rimLight = new THREE.DirectionalLight(0x94a3b8, 0.35);
+    rimLight.position.set(-8.0, 6.0, -10.0);
+    scene.add(rimLight);
+
+    // Shared State Declarations
+    let webcamActive = false;
+    let isModelLoading = false;
+    let handLandmarker = null;
+    let lastVideoTime = -1;
+    let useOneEuroFilter = true;
+    let cockpitZonesVisible = true;
+    const handsState = [];
+    const hudCards = [];
+    const backScreenCards = [];
+    let selectedCardId = 'books';
+
+    const tutorialState = {
+      active: true,
+      stepIndex: 0,
+      completed: false,
+      progressHold: 0
+    };
+
+    // Cinematic Transition Sequence between Tutorial End & Real Content Intro
+    const transitionState = {
+      phase: 'NONE', // 'NONE' | 'TUTORIAL_OUTRO' | 'CONTENT_INTRO'
+      timer: 0.0,
+      outroDuration: 2.0,
+      introDuration: 2.6
+    };
+
+    const tutorialSteps = [
+      {
+        step: "01 / 04 · OPTICAL SENSOR",
+        title: "Enable Hand Camera",
+        subtitle: "Click anywhere in the 3D space (or press [C]) to activate live webcam tracking",
+        posture: "REQUIRED: Grant browser camera permission (or press [1] to simulate)",
+        color: "#0f172a",
+        reqAction: "camera"
+      },
+      {
+        step: "02 / 04 · 3-FINGER POSTURE",
+        title: "Raise Thumb, Pointer & Middle",
+        subtitle: "Hold your hand 40–60 cm from the camera — only Thumb, Pointer & Middle are tracked",
+        posture: "POSTURE: Thumb, Pointer & Middle visible · Hold steady for 1.0s",
+        color: "#10b981",
+        reqAction: "posture"
+      },
+      {
+        step: "03 / 04 · LEFT CLICK [THUMB + POINTER]",
+        title: "Left Click (Primary Select)",
+        subtitle: "Tap Pointer to Thumb to Left-Click — opens the focused Orb on Center Stage",
+        posture: "ACTION: Touch Pointer fingertip to Thumb (Left Click)",
+        color: "#22c55e",
+        reqAction: "index"
+      },
+      {
+        step: "04 / 04 · RIGHT CLICK [THUMB + MIDDLE]",
+        title: "Right Click (Pin / Context)",
+        subtitle: "Tap Middle fingertip to Thumb to Right-Click — pins active card to a side bay",
+        posture: "ACTION: Touch Middle fingertip to Thumb (Right Click)",
+        color: "#0ea5e9",
+        reqAction: "middle"
+      }
+    ];
+
+    /**************************************************************************
+     * 3B. MONUMENTAL ROTUNDA ARCHITECTURE & UNIFIED COAXIAL POLAR GRID
+     **************************************************************************/
+    const POLAR_ORIGIN = new THREE.Vector3(0, -3.2, -1.8);
+    const POLAR_OUTER_R = 24.0;
+    const POLAR_RINGS = 12;
+    const POLAR_SPOKES = 16;
+    const POLAR_STEP_R = POLAR_OUTER_R / POLAR_RINGS; // 2.0m per ring step
+
+    const DECK_INNER_R = POLAR_STEP_R * 1.4; // 2.8m (Central Gravity Well)
+    const DECK_MID_R   = POLAR_STEP_R * 2.8; // 5.6m (Horseshoe Podium Outer)
+    const DECK_OUTER_R = POLAR_STEP_R * 4.2; // 8.4m (Near Control Perimeter)
+
+    const CYLINDER_RADIUS = 11.5; // Far Display Arch radius
+    const ROTUNDA_WALL_R = 16.5;  // Monumental curved chamber wall
+
+    // Coaxial Polar Floor Grid
+    const floorPolarGrid = new THREE.PolarGridHelper(
+      POLAR_OUTER_R,
+      POLAR_SPOKES,
+      POLAR_RINGS,
+      64,
+      0xcbd5e1,
+      0xe2e8f0
+    );
+    floorPolarGrid.position.copy(POLAR_ORIGIN);
+    scene.add(floorPolarGrid);
+
+    // Subtle Inclined Split-Ring Horseshoe Podium (Reference Architecture)
+    function createInclinedHorseshoeGeometry(innerR, outerR, startAngle, endAngle, segs, minH, maxH) {
+      const geom = new THREE.BufferGeometry();
+      const positions = [];
+      const normals = [];
+      const indices = [];
+
+      function getHeightAt(theta) {
+        const zNorm = (-Math.cos(theta) + 1) * 0.5;
+        return minH + (maxH - minH) * Math.pow(zNorm, 1.15);
+      }
+
+      for (let i = 0; i <= segs; i++) {
+        const u = i / segs;
+        const theta = startAngle + u * (endAngle - startAngle);
+        const sinT = Math.sin(theta);
+        const cosT = Math.cos(theta);
+        const h = getHeightAt(theta);
+
+        const xIn = innerR * sinT;
+        const zIn = innerR * cosT;
+        const xOut = outerR * sinT;
+        const zOut = outerR * cosT;
+
+        // 0: Inner Bottom, 1: Inner Top, 2: Outer Top, 3: Outer Bottom
+        positions.push(xIn, 0, zIn);
+        normals.push(-sinT, 0, -cosT);
+
+        positions.push(xIn, h, zIn);
+        normals.push(0, 1, 0.12);
+
+        positions.push(xOut, h, zOut);
+        normals.push(0, 1, 0.12);
+
+        positions.push(xOut, 0, zOut);
+        normals.push(sinT, 0, cosT);
+      }
+
+      for (let i = 0; i < segs; i++) {
+        const b = i * 4;
+        const n = (i + 1) * 4;
+        // Top sloped ramp
+        indices.push(b + 1, b + 2, n + 2);
+        indices.push(b + 1, n + 2, n + 1);
+        // Inner vertical wall
+        indices.push(b + 0, n + 0, n + 1);
+        indices.push(b + 0, n + 1, b + 1);
+        // Outer vertical wall
+        indices.push(b + 2, n + 3, b + 3);
+        indices.push(b + 2, n + 2, n + 3);
+      }
+
+      // Front End Caps
+      const b0 = 0;
+      indices.push(b0 + 0, b0 + 1, b0 + 2);
+      indices.push(b0 + 0, b0 + 2, b0 + 3);
+      const bL = segs * 4;
+      indices.push(bL + 0, bL + 2, bL + 1);
+      indices.push(bL + 0, bL + 3, bL + 2);
+
+      geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geom.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+      geom.setIndex(indices);
+      geom.computeVertexNormals();
+      return geom;
+    }
+
+    const rotundaArchitectureGroup = new THREE.Group();
+    rotundaArchitectureGroup.position.copy(POLAR_ORIGIN);
+    scene.add(rotundaArchitectureGroup);
+
+    const gapHalfAngle = 0.42;
+    const horseshoeGeom = createInclinedHorseshoeGeometry(
+      DECK_INNER_R,
+      DECK_MID_R,
+      gapHalfAngle,
+      Math.PI * 2 - gapHalfAngle,
+      48,
+      0.28,
+      1.75
+    );
+    const horseshoeMat = new THREE.MeshStandardMaterial({
+      color: 0xe2e8f0,
+      roughness: 0.78,
+      metalness: 0.08,
+      side: THREE.DoubleSide
+    });
+    const horseshoeMesh = new THREE.Mesh(horseshoeGeom, horseshoeMat);
+    rotundaArchitectureGroup.add(horseshoeMesh);
+
+    const horseshoeEdges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(horseshoeGeom, 18),
+      new THREE.LineBasicMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.45 })
+    );
+    rotundaArchitectureGroup.add(horseshoeEdges);
+
+    // Central Dark Gravity Well Pit
+    const pitDisc = new THREE.Mesh(
+      new THREE.CircleGeometry(DECK_INNER_R * 0.82, 64),
+      new THREE.MeshBasicMaterial({ color: 0x0f172a, transparent: true, opacity: 0.85 })
+    );
+    pitDisc.rotation.x = -Math.PI * 0.5;
+    pitDisc.position.y = 0.01;
+    rotundaArchitectureGroup.add(pitDisc);
+
+    // Expanding Shockwave Rings for Tutorial Outro & Real Content Intro Sequence
+    const transitionShockwaveGroup = new THREE.Group();
+    transitionShockwaveGroup.position.set(0, 0.08, 0);
+    rotundaArchitectureGroup.add(transitionShockwaveGroup);
+
+    const shockwaveRings = [0x10b981, 0x0ea5e9, 0x0f172a].map((hex, idx) => {
+      const mat = new THREE.MeshBasicMaterial({
+        color: hex,
+        transparent: true,
+        opacity: 0.0,
+        side: THREE.DoubleSide
+      });
+      const mesh = new THREE.Mesh(new THREE.RingGeometry(0.85, 1.05 + idx * 0.06, 72), mat);
+      mesh.rotation.x = -Math.PI * 0.5;
+      transitionShockwaveGroup.add(mesh);
+      return { mesh, mat };
+    });
+
+    // Monumental Curved Rotunda Chamber Wall & Overhead Oculus
+    const chamberWallGeom = new THREE.CylinderGeometry(
+      ROTUNDA_WALL_R,
+      ROTUNDA_WALL_R,
+      18.0,
+      48,
+      4,
+      true,
+      Math.PI * 0.55,
+      Math.PI * 0.90
+    );
+    const chamberWallWire = new THREE.LineSegments(
+      new THREE.WireframeGeometry(chamberWallGeom),
+      new THREE.LineBasicMaterial({ color: 0xcbd5e1, transparent: true, opacity: 0.25 })
+    );
+    chamberWallWire.position.y = 8.5;
+    rotundaArchitectureGroup.add(chamberWallWire);
+
+    // Overhead Oculus Ring & Louvers
+    const oculusRing = new THREE.Mesh(
+      new THREE.RingGeometry(ROTUNDA_WALL_R * 0.58, ROTUNDA_WALL_R * 0.96, 72, 1),
+      new THREE.MeshBasicMaterial({ color: 0xdbeafe, transparent: true, opacity: 0.22, side: THREE.DoubleSide })
+    );
+    oculusRing.rotation.x = Math.PI * 0.5;
+    oculusRing.position.y = 14.5;
+    rotundaArchitectureGroup.add(oculusRing);
+
+    for (let i = -8; i <= 8; i++) {
+      const xOff = i * 1.15;
+      const halfChord = Math.sqrt(Math.max(0, Math.pow(ROTUNDA_WALL_R * 0.56, 2) - xOff * xOff));
+      if (halfChord > 0.5) {
+        const louver = new THREE.Mesh(
+          new THREE.PlaneGeometry(0.18, halfChord * 1.9),
+          new THREE.MeshBasicMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.22, side: THREE.DoubleSide })
+        );
+        louver.position.set(xOff, 14.5, 0);
+        louver.rotation.x = Math.PI * 0.38;
+        rotundaArchitectureGroup.add(louver);
+      }
+    }
+
+    /**************************************************************************
+     * 3C. CURVED 3D CONCAVE SURFACE UTILITY (Guarantees Un-Mirrored 3D Text)
+     **************************************************************************/
+    function createConcaveCurvedSurfaceGeometry(radius, height, arcSpanRad, segsX = 64, segsY = 1) {
+      const geom = new THREE.PlaneGeometry(radius * arcSpanRad, height, segsX, segsY);
+      const pos = geom.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const u = pos.getX(i) / (radius * arcSpanRad); // -0.5 (left) to +0.5 (right)
+        const theta = u * arcSpanRad;
+        const cx = Math.sin(theta) * radius;
+        const cz = -Math.cos(theta) * radius;
+        pos.setXYZ(i, cx, pos.getY(i), cz);
+      }
+      geom.computeVertexNormals();
+      return geom;
+    }
+
+    const cockpitGroup = new THREE.Group();
+    scene.add(cockpitGroup);
+
+    const controlDeckGroup = new THREE.Group();
+    controlDeckGroup.position.copy(POLAR_ORIGIN);
+    cockpitGroup.add(controlDeckGroup);
+
+    // Concentric Polar Control Rings
+    function buildHorizontalCircleLine(radius, segments, color, opacity, yOffset = 0.03) {
+      const pts = [];
+      for (let i = 0; i <= segments; i++) {
+        const a = (i / segments) * Math.PI * 2;
+        pts.push(new THREE.Vector3(Math.cos(a) * radius, yOffset, Math.sin(a) * radius));
+      }
+      const geom = new THREE.BufferGeometry().setFromPoints(pts);
+      const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
+      return { line: new THREE.Line(geom, mat), mat };
+    }
+
+    const deckInnerRing = buildHorizontalCircleLine(DECK_INNER_R, 72, 0x64748b, 0.55);
+    const deckMidRing   = buildHorizontalCircleLine(DECK_MID_R, 96, 0x64748b, 0.42);
+    const deckOuterRing = buildHorizontalCircleLine(DECK_OUTER_R, 112, 0x94a3b8, 0.35);
+    controlDeckGroup.add(deckInnerRing.line, deckMidRing.line, deckOuterRing.line);
+
+    // 2 Streamlined Curved Arc-Sector Chord Pads (Left Click [1] & Right Click [2])
+    const padConfigs = [
+      { slot: 1, label: "[1] LEFT CLICK (POINTER)", color: 0x22c55e, centerAngle: -0.18 },
+      { slot: 2, label: "[2] RIGHT CLICK (MIDDLE)", color: 0x0ea5e9, centerAngle:  0.18 }
+    ];
+
+    const deckActionPads = padConfigs.map((padCfg) => {
+      const arcSpan = 0.26;
+      const pts = [];
+      const rIn = DECK_INNER_R + 0.15;
+      const rOut = DECK_MID_R - 0.15;
+      const steps = 16;
+      for (let i = 0; i <= steps; i++) {
+        const a = padCfg.centerAngle - arcSpan * 0.5 + (i / steps) * arcSpan;
+        pts.push(new THREE.Vector3(Math.sin(a) * rOut, 0.05, Math.cos(a) * rOut));
+      }
+      for (let i = steps; i >= 0; i--) {
+        const a = padCfg.centerAngle - arcSpan * 0.5 + (i / steps) * arcSpan;
+        pts.push(new THREE.Vector3(Math.sin(a) * rIn, 0.05, Math.cos(a) * rIn));
+      }
+      pts.push(pts[0].clone());
+      const borderMat = new THREE.LineBasicMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.38 });
+      const borderLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), borderMat);
+      controlDeckGroup.add(borderLine);
+      return { cfg: padCfg, borderMat, pulse: 0 };
+    });
+
+    // Projected Hand Cursor on the Polar Floor
+    const deckHandCursorGroup = new THREE.Group();
+    const deckCursorMat = new THREE.MeshBasicMaterial({ color: 0x64748b, transparent: true, opacity: 0.0, side: THREE.DoubleSide });
+    const deckCursorMesh = new THREE.Mesh(new THREE.RingGeometry(0.18, 0.24, 32), deckCursorMat);
+    deckCursorMesh.rotation.x = -Math.PI * 0.5;
+    deckCursorMesh.position.y = 0.06;
+    deckHandCursorGroup.add(deckCursorMesh);
+    controlDeckGroup.add(deckHandCursorGroup);
+
+    // 1. CURVED 3D NEAR-FIELD LOG RIBBON (Follows Front Podium Arc, Un-Mirrored)
+    const nearLogCanvas = document.createElement('canvas');
+    nearLogCanvas.width = 1024;
+    nearLogCanvas.height = 192;
+    const nearLogCtx = nearLogCanvas.getContext('2d');
+    const nearLogTex = new THREE.CanvasTexture(nearLogCanvas);
+    nearLogTex.minFilter = THREE.LinearFilter;
+    nearLogTex.magFilter = THREE.LinearFilter;
+    nearLogTex.generateMipmaps = false;
+
+    const nearLogGeom = createConcaveCurvedSurfaceGeometry(DECK_MID_R + 0.5, 0.85, 0.76, 32, 1);
+    // Invert Z so it curves along the front (+Z) rim facing the camera
+    const nlPos = nearLogGeom.attributes.position;
+    for (let i = 0; i < nlPos.count; i++) {
+      nlPos.setZ(i, -nlPos.getZ(i));
+    }
+    nearLogGeom.computeVertexNormals();
+
+    const nearLogMat = new THREE.MeshBasicMaterial({
+      map: nearLogTex,
+      transparent: true,
+      opacity: 0.95,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const nearLogScreenMesh = new THREE.Mesh(nearLogGeom, nearLogMat);
+    nearLogScreenMesh.position.set(0, 0.52, 0);
+    controlDeckGroup.add(nearLogScreenMesh);
+
+    // 2. CURVED 3D CENTER STAGE COLLAR SCREEN (Orbits Central Well, Un-Mirrored)
+    const centerStageCardCanvas = document.createElement('canvas');
+    centerStageCardCanvas.width = 768;
+    centerStageCardCanvas.height = 192;
+    const centerStageCardCtx = centerStageCardCanvas.getContext('2d');
+    const centerStageCardTex = new THREE.CanvasTexture(centerStageCardCanvas);
+    centerStageCardTex.minFilter = THREE.LinearFilter;
+    centerStageCardTex.magFilter = THREE.LinearFilter;
+    centerStageCardTex.generateMipmaps = false;
+
+    const centerStageGeom = createConcaveCurvedSurfaceGeometry(DECK_INNER_R + 0.15, 0.68, 0.72, 28, 1);
+    const csPos = centerStageGeom.attributes.position;
+    for (let i = 0; i < csPos.count; i++) {
+      csPos.setZ(i, -csPos.getZ(i));
+    }
+    centerStageGeom.computeVertexNormals();
+
+    const centerStageCardMesh = new THREE.Mesh(
+      centerStageGeom,
+      new THREE.MeshBasicMaterial({
+        map: centerStageCardTex,
+        transparent: true,
+        opacity: 0.94,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      })
+    );
+    centerStageCardMesh.position.set(0, 0.45, 0);
+    controlDeckGroup.add(centerStageCardMesh);
+
+    // 3. CURVED 3D FAR DISPLAY ARCH HEADER (Un-Mirrored)
+    const archHeaderCanvas = document.createElement('canvas');
+    archHeaderCanvas.width = 960;
+    archHeaderCanvas.height = 128;
+    const archHeaderCtx = archHeaderCanvas.getContext('2d');
+    const archHeaderTex = new THREE.CanvasTexture(archHeaderCanvas);
+    archHeaderTex.minFilter = THREE.LinearFilter;
+    archHeaderTex.magFilter = THREE.LinearFilter;
+    archHeaderTex.generateMipmaps = false;
+
+    const archHeaderGeom = createConcaveCurvedSurfaceGeometry(CYLINDER_RADIUS, 0.95, 0.52, 32, 1);
+    const archHeaderMesh = new THREE.Mesh(
+      archHeaderGeom,
+      new THREE.MeshBasicMaterial({
+        map: archHeaderTex,
+        transparent: true,
+        opacity: 0.92,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      })
+    );
+    archHeaderMesh.position.set(0, 4.8, 2.2);
+    cockpitGroup.add(archHeaderMesh);
+
+    let lastNearLogSig = "";
+    let lastHeaderSig = "";
+
+    updateNearRingLogTexture = function(accentHex = '#0f172a') {
+      const camStr = webcamActive ? 'CAM: LIVE' : 'CAM: REQUIRED [CLICK OR PRESS C]';
+      const h0 = handsState[0];
+      const handStr = (webcamActive && h0 && h0.active) ? 'HAND: ACTIVE' : 'HAND: STANDBY';
+      const sig = `${accentHex}|${camStr}|${handStr}|${logBuffer.join('~')}`;
+      if (sig === lastNearLogSig) return;
+      lastNearLogSig = sig;
+
+      const w = nearLogCanvas.width;
+      const h = nearLogCanvas.height;
+      nearLogCtx.clearRect(0, 0, w, h);
+      nearLogCtx.save();
+      nearLogCtx.scale(w / 1600, h / 256);
+
+      nearLogCtx.strokeStyle = 'rgba(15, 23, 42, 0.22)';
+      nearLogCtx.lineWidth = 2;
+      nearLogCtx.beginPath();
+      nearLogCtx.moveTo(80, 16);
+      nearLogCtx.lineTo(1520, 16);
+      nearLogCtx.moveTo(80, 240);
+      nearLogCtx.lineTo(1520, 240);
+      nearLogCtx.stroke();
+
+      nearLogCtx.fillStyle = accentHex;
+      nearLogCtx.font = '600 22px "JetBrains Mono", monospace';
+      nearLogCtx.textAlign = 'left';
+      nearLogCtx.fillText(`NEAR POLAR CONTROL RING  //  ${camStr}  ·  ${handStr}`, 100, 56);
+
+      nearLogCtx.fillStyle = '#475569';
+      nearLogCtx.font = '500 20px "JetBrains Mono", monospace';
+      nearLogCtx.textAlign = 'right';
+      nearLogCtx.fillText(`SWIPE: MOVE SCROLL BAR  ·  POINTER TAP [1]: LEFT CLICK  ·  MIDDLE TAP [2]: RIGHT CLICK`, 1500, 56);
+
+      nearLogCtx.textAlign = 'center';
+      const recent = logBuffer.slice(-3);
+      recent.forEach((line, idx) => {
+        const isLatest = idx === recent.length - 1;
+        nearLogCtx.fillStyle = isLatest ? '#0f172a' : '#64748b';
+        nearLogCtx.font = `${isLatest ? '600' : '400'} ${isLatest ? 24 : 20}px "JetBrains Mono", monospace`;
+        nearLogCtx.fillText(line, 800, 112 + idx * 42);
+      });
+
+      nearLogCtx.restore();
+      nearLogTex.needsUpdate = true;
+    };
+
+    function redrawCockpitZoneHeaders(zoneStateText = "STANDBY", accentHex = "#475569") {
+      const centerHeadline = tutorialState.active
+        ? tutorialSteps[tutorialState.stepIndex].title
+        : `ORB ${(hudCards.find(c => c.id === selectedCardId)?.title || '01').toUpperCase()}  ·  ${zoneStateText}`;
+      const headerSig = `${zoneStateText}|${accentHex}|${centerHeadline}`;
+      if (headerSig === lastHeaderSig) {
+        updateNearRingLogTexture(accentHex);
+        return;
+      }
+      lastHeaderSig = headerSig;
+
+      // Far Arch Header
+      archHeaderCtx.clearRect(0, 0, archHeaderCanvas.width, archHeaderCanvas.height);
+      archHeaderCtx.save();
+      archHeaderCtx.scale(archHeaderCanvas.width / 1200, archHeaderCanvas.height / 160);
+      archHeaderCtx.strokeStyle = accentHex;
+      archHeaderCtx.lineWidth = 2.5;
+      archHeaderCtx.beginPath();
+      archHeaderCtx.moveTo(140, 140);
+      archHeaderCtx.lineTo(1060, 140);
+      archHeaderCtx.stroke();
+
+      archHeaderCtx.fillStyle = accentHex;
+      archHeaderCtx.font = '600 28px "JetBrains Mono", monospace';
+      archHeaderCtx.textAlign = 'center';
+      archHeaderCtx.fillText(`PANORAMIC DISPLAY ARCH  //  ${zoneStateText}`, 600, 95);
+      archHeaderCtx.restore();
+      archHeaderTex.needsUpdate = true;
+
+      // Center Stage Collar
+      centerStageCardCtx.clearRect(0, 0, centerStageCardCanvas.width, centerStageCardCanvas.height);
+      centerStageCardCtx.save();
+      centerStageCardCtx.scale(centerStageCardCanvas.width / 1024, centerStageCardCanvas.height / 256);
+      centerStageCardCtx.strokeStyle = accentHex;
+      centerStageCardCtx.lineWidth = 3;
+      centerStageCardCtx.beginPath();
+      centerStageCardCtx.moveTo(120, 24);
+      centerStageCardCtx.lineTo(904, 24);
+      centerStageCardCtx.stroke();
+
+      centerStageCardCtx.fillStyle = '#64748b';
+      centerStageCardCtx.font = '600 22px "JetBrains Mono", monospace';
+      centerStageCardCtx.textAlign = 'center';
+      centerStageCardCtx.fillText(`CENTER STAGE WELL  //  MONOLITH AXIS`, 512, 72);
+
+      centerStageCardCtx.fillStyle = '#0f172a';
+      centerStageCardCtx.font = '300 40px "Inter", sans-serif';
+      centerStageCardCtx.fillText(centerHeadline, 512, 148);
+      centerStageCardCtx.restore();
+      centerStageCardTex.needsUpdate = true;
+
+      updateNearRingLogTexture(accentHex);
+    }
+
+    /**************************************************************************
+     * 4. COMPACT MORPHING CENTRAL PLANETARY CORE (Scales Down & Morphs per Orb)
+     **************************************************************************/
+    const coreGroup = new THREE.Group();
+    // Positioned compactly right above the central gravity well
+    const CORE_BASE_POS = new THREE.Vector3(POLAR_ORIGIN.x, POLAR_ORIGIN.y + 1.95, POLAR_ORIGIN.z);
+    coreGroup.position.copy(CORE_BASE_POS);
+    scene.add(coreGroup);
+
+    const coreParts = [];
+    const coreState = {
+      explodeFactor: 0.0,
+      targetExplode: 0.0,
+      rotVelX: 0.002,
+      rotVelY: 0.005,
+      baseScale: 0.48,
+      targetScale: 0.48,
+      activeShapeId: 'books'
+    };
+
+    // Compact Morphing Shape Meshes (Pre-computed wireframe geometries so switching Orbs is zero-allocation)
+    const coreShapeDefinitions = {
+      books:   new THREE.IcosahedronGeometry(0.68, 1),
+      photos:  new THREE.TorusKnotGeometry(0.46, 0.14, 48, 12),
+      music:   new THREE.OctahedronGeometry(0.74, 2),
+      home:    new THREE.DodecahedronGeometry(0.68, 0),
+      core:    new THREE.TorusGeometry(0.56, 0.22, 14, 36),
+      archive: new THREE.ConeGeometry(0.65, 1.1, 6)
+    };
+    const coreWireDefinitions = {};
+    Object.keys(coreShapeDefinitions).forEach((k) => {
+      coreWireDefinitions[k] = new THREE.WireframeGeometry(coreShapeDefinitions[k]);
+    });
+
+    const monolithSphereMat = new THREE.MeshStandardMaterial({
+      color: 0x334155,
+      roughness: 0.55,
+      metalness: 0.22
+    });
+    const monolithSphereMesh = new THREE.Mesh(coreShapeDefinitions.books, monolithSphereMat);
+    coreGroup.add(monolithSphereMesh);
+
+    const geoShellMat = new THREE.LineBasicMaterial({ color: 0x0f172a, transparent: true, opacity: 0.45 });
+    const geoShellWire = new THREE.LineSegments(
+      coreWireDefinitions.books,
+      geoShellMat
+    );
+    geoShellWire.scale.setScalar(1.08);
+    coreGroup.add(geoShellWire);
+
+    function setCoreShapeForOrb(orbId) {
+      const nextGeom = coreShapeDefinitions[orbId] || coreShapeDefinitions.books;
+      const nextWire = coreWireDefinitions[orbId] || coreWireDefinitions.books;
+      if (coreState.activeShapeId !== orbId) {
+        coreState.activeShapeId = orbId;
+        monolithSphereMesh.geometry = nextGeom;
+        geoShellWire.geometry = nextWire;
+        // Trigger a subtle morph scale pulse
+        coreGroup.scale.setScalar(0.32);
+      }
+    }
+
+    // Compact Gimbal Rings & Satellites (Much smaller so they never clutter the view)
+    for (let i = 0; i < 2; i++) {
+      const ringGeom = new THREE.TorusGeometry(0.92 + i * 0.16, 0.012, 12, 64);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0x334155, transparent: true, opacity: 0.38 });
+      const ringMesh = new THREE.Mesh(ringGeom, ringMat);
+      ringMesh.rotation.set(i * 1.1, i * 0.7, 0);
+      coreGroup.add(ringMesh);
+      coreParts.push({
+        mesh: ringMesh,
+        basePos: new THREE.Vector3(0, 0, 0),
+        explodeDir: new THREE.Vector3(Math.sin(i * 2.1), Math.cos(i * 1.7), Math.sin(i)).normalize(),
+        explodeDist: 0.75 + i * 0.35
+      });
+    }
+
+    for (let i = 0; i < 6; i++) {
+      const phi = Math.acos(-1 + (2 * i) / 6);
+      const theta = Math.sqrt(6 * Math.PI) * phi;
+      const dir = new THREE.Vector3(
+        Math.cos(theta) * Math.sin(phi),
+        Math.sin(theta) * Math.sin(phi),
+        Math.cos(phi)
+      ).normalize();
+      const satMesh = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.OctahedronGeometry(0.11, 0)),
+        new THREE.LineBasicMaterial({ color: 0x1e293b, transparent: true, opacity: 0.55 })
+      );
+      satMesh.position.copy(dir.clone().multiplyScalar(0.88));
+      coreGroup.add(satMesh);
+      coreParts.push({
+        mesh: satMesh,
+        basePos: dir.clone().multiplyScalar(0.88),
+        explodeDir: dir,
+        explodeDist: 1.1
+      });
+    }
+
+    /**************************************************************************
+     * 5. FAR-WALL CURVED 3D TUTORIAL PROJECTION & 3D TARGET SHAPES
+     **************************************************************************/
+    const tutorialGroup = new THREE.Group();
+    scene.add(tutorialGroup);
+
+    const tutCardCanvas = document.createElement('canvas');
+    tutCardCanvas.width = 1280;
+    tutCardCanvas.height = 440;
+    const tutCardCtx = tutCardCanvas.getContext('2d');
+    const tutCardTex = new THREE.CanvasTexture(tutCardCanvas);
+    tutCardTex.minFilter = THREE.LinearFilter;
+    tutCardTex.magFilter = THREE.LinearFilter;
+    tutCardTex.generateMipmaps = false;
+
+    // Concave Curved Wall Projection on the Monumental Rotunda Wall (Un-Mirrored)
+    const TUT_WALL_R = 13.5;
+    const tutCurvedGeom = createConcaveCurvedSurfaceGeometry(TUT_WALL_R, 4.4, 0.78, 36, 1);
+    const tutCardMat = new THREE.MeshBasicMaterial({
+      map: tutCardTex,
+      transparent: true,
+      opacity: 0.98,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const tutCardPlane = new THREE.Mesh(tutCurvedGeom, tutCardMat);
+    tutCardPlane.position.set(0, 3.1, 3.0);
+    tutorialGroup.add(tutCardPlane);
+
+    // 3D Target Shapes for Tutorial Calibration Steps
+    const tutShapeAnchor = new THREE.Group();
+    tutShapeAnchor.position.set(POLAR_ORIGIN.x, POLAR_ORIGIN.y + 2.4, POLAR_ORIGIN.z + 1.8);
+    tutorialGroup.add(tutShapeAnchor);
+
+    const tutDockRingMat = new THREE.MeshBasicMaterial({
+      color: 0x0f172a,
+      transparent: true,
+      opacity: 0.55,
+      side: THREE.DoubleSide
+    });
+    const tutDockRing = new THREE.Mesh(new THREE.RingGeometry(1.15, 1.24, 48), tutDockRingMat);
+    tutShapeAnchor.add(tutDockRing);
+
+    const tutShapeGeoms = [
+      new THREE.OctahedronGeometry(0.75, 0),
+      new THREE.IcosahedronGeometry(0.78, 1),
+      new THREE.TetrahedronGeometry(0.82, 0),
+      new THREE.TorusGeometry(0.62, 0.20, 12, 32),
+      new THREE.DodecahedronGeometry(0.76, 0),
+      new THREE.TorusKnotGeometry(0.52, 0.16, 48, 12)
+    ];
+
+    const tutShapeMeshes = tutShapeGeoms.map((g, idx) => {
+      const grp = new THREE.Group();
+      const wire = new THREE.LineSegments(
+        new THREE.WireframeGeometry(g),
+        new THREE.LineBasicMaterial({ color: tutorialSteps[idx]?.color || '#0f172a', transparent: true, opacity: 0.85 })
+      );
+      grp.add(wire);
+      grp.visible = (idx === 0);
+      tutShapeAnchor.add(grp);
+      return { grp, wire };
+    });
+
+    let lastTutCardSig = "";
+
+    function drawTutorialCard(stepIdx, holdRatio = 0, isHovered = false) {
+      const qHold = Math.round(holdRatio * 40);
+      const sig = `${stepIdx}|${qHold}|${isHovered}|${tutorialSteps[stepIdx]?.subtitle || ''}`;
+      if (sig === lastTutCardSig) return;
+      lastTutCardSig = sig;
+
+      const cfg = tutorialSteps[stepIdx] || tutorialSteps[0];
+      const w = tutCardCanvas.width;
+      const h = tutCardCanvas.height;
+      tutCardCtx.clearRect(0, 0, w, h);
+      tutCardCtx.save();
+      tutCardCtx.scale(w / 1800, h / 620);
+
+      tutCardCtx.textAlign = 'center';
+      tutCardCtx.fillStyle = cfg.color;
+      tutCardCtx.font = '600 30px "JetBrains Mono", monospace';
+      tutCardCtx.fillText(cfg.step, 900, 110);
+
+      tutCardCtx.fillStyle = '#0f172a';
+      tutCardCtx.font = '200 92px "Inter", sans-serif';
+      tutCardCtx.fillText(cfg.title, 900, 235);
+
+      tutCardCtx.fillStyle = '#334155';
+      tutCardCtx.font = '400 34px "Inter", sans-serif';
+      tutCardCtx.fillText(cfg.subtitle, 900, 325);
+
+      tutCardCtx.fillStyle = isHovered ? cfg.color : '#64748b';
+      tutCardCtx.font = '500 26px "JetBrains Mono", monospace';
+      tutCardCtx.fillText(cfg.posture, 900, 415);
+
+      if (holdRatio > 0.01) {
+        const barW = 520;
+        const bx = (1800 - barW) * 0.5;
+        const by = 475;
+        tutCardCtx.fillStyle = 'rgba(15, 23, 42, 0.12)';
+        tutCardCtx.fillRect(bx, by, barW, 10);
+        tutCardCtx.fillStyle = cfg.color;
+        tutCardCtx.fillRect(bx, by, barW * Math.min(1, holdRatio), 10);
+      }
+
+      tutCardCtx.restore();
+      tutCardTex.needsUpdate = true;
+    }
+
+    let lastTransBannerSig = "";
+
+    function drawTransitionBanner(phase, progress) {
+      const qProg = Math.round(progress * 30);
+      const sig = `${phase}|${qProg}`;
+      if (sig === lastTransBannerSig) return;
+      lastTransBannerSig = sig;
+
+      const w = tutCardCanvas.width;
+      const h = tutCardCanvas.height;
+      tutCardCtx.clearRect(0, 0, w, h);
+      tutCardCtx.save();
+      tutCardCtx.scale(w / 1800, h / 620);
+      tutCardCtx.textAlign = 'center';
+
+      if (phase === 'TUTORIAL_OUTRO') {
+        const alpha = Math.sin(Math.min(1, progress * 1.15) * Math.PI);
+        tutCardCtx.globalAlpha = Math.max(0, alpha);
+
+        tutCardCtx.fillStyle = '#10b981';
+        tutCardCtx.font = '600 30px "JetBrains Mono", monospace';
+        tutCardCtx.fillText('CALIBRATION SEQUENCE  //  100% VERIFIED', 900, 130);
+
+        tutCardCtx.fillStyle = '#0f172a';
+        tutCardCtx.font = '200 96px "Inter", sans-serif';
+        tutCardCtx.fillText('TUTORIAL COMPLETE', 900, 250);
+
+        tutCardCtx.fillStyle = '#475569';
+        tutCardCtx.font = '400 32px "Inter", sans-serif';
+        tutCardCtx.fillText('Collapsing calibration rig · Preparing spatial rotunda workspace...', 900, 335);
+
+        const barW = 640;
+        const bx = (1800 - barW) * 0.5;
+        tutCardCtx.fillStyle = 'rgba(15, 23, 42, 0.12)';
+        tutCardCtx.fillRect(bx, 400, barW, 8);
+        tutCardCtx.fillStyle = '#10b981';
+        tutCardCtx.fillRect(bx, 400, barW * Math.min(1, progress), 8);
+      } else if (phase === 'CONTENT_INTRO') {
+        const fadeOut = 1.0 - THREE.MathUtils.smoothstep(progress, 0.55, 0.98);
+        tutCardCtx.globalAlpha = Math.max(0, fadeOut);
+
+        tutCardCtx.fillStyle = '#0ea5e9';
+        tutCardCtx.font = '600 30px "JetBrains Mono", monospace';
+        tutCardCtx.fillText('AETHER SPATIAL OS  //  INITIALIZING ARCHITECTURE', 900, 130);
+
+        tutCardCtx.fillStyle = '#0f172a';
+        tutCardCtx.font = '200 104px "Inter", sans-serif';
+        tutCardCtx.fillText('ROTUNDA ONLINE', 900, 255);
+
+        tutCardCtx.fillStyle = '#334155';
+        tutCardCtx.font = '500 28px "JetBrains Mono", monospace';
+        tutCardCtx.fillText('DEPLOYING PEDESTAL CAROUSEL  ·  5 PANORAMIC BAYS  ·  PLANETARY CORE', 900, 340);
+      }
+
+      tutCardCtx.restore();
+      tutCardTex.needsUpdate = true;
+    }
+
+    function setTutorialStep(idx) {
+      tutorialState.stepIndex = idx;
+      tutorialState.progressHold = 0;
+      const cfg = tutorialSteps[idx] || tutorialSteps[0];
+
+      tutShapeMeshes.forEach((s, i) => {
+        s.grp.visible = (i === idx);
+        s.grp.scale.setScalar(1.0);
+        s.grp.position.set(0, 0, 0);
+      });
+      tutShapeAnchor.scale.setScalar(1.0);
+      tutShapeAnchor.position.set(POLAR_ORIGIN.x, POLAR_ORIGIN.y + 2.4, POLAR_ORIGIN.z + 1.8);
+      tutCardPlane.position.set(0, 3.1, 3.0);
+      tutCardMat.opacity = 0.98;
+
+      // Hide the central monolith sphere during tutorial so only the clean target shape & tutorial text show
+      monolithSphereMesh.visible = !tutorialState.active;
+      geoShellWire.visible = !tutorialState.active;
+
+      tutDockRingMat.color.set(cfg.color);
+      tutDockRingMat.opacity = 0.55;
+      drawTutorialCard(idx, 0, false);
+      redrawCockpitZoneHeaders(`TUTORIAL ${cfg.step}`, cfg.color);
+    }
+
+    function startTutorialEndAndContentIntro() {
+      if (transitionState.phase !== 'NONE') return;
+      transitionState.phase = 'TUTORIAL_OUTRO';
+      transitionState.timer = 0.0;
+
+      // Show all 4 geometric calibration shapes briefly orbiting & imploding into the center well
+      tutShapeMeshes.forEach((s, i) => {
+        s.grp.visible = i >= 2;
+      });
+
+      synth.playExplodeChord(false);
+      redrawCockpitZoneHeaders("CALIBRATION COMPLETE // STANDBY", "#10b981");
+      showToast("tutorial complete // initiating workspace transition...");
+    }
+
+    function updateTransitionSequence(dt) {
+      if (transitionState.phase === 'NONE') return;
+
+      transitionState.timer += dt;
+
+      if (transitionState.phase === 'TUTORIAL_OUTRO') {
+        const p = Math.min(1.0, transitionState.timer / transitionState.outroDuration);
+        const easeIn = p * p * (3.0 - 2.0 * p);
+
+        // 1. Update Far-Wall Tutorial Outro Banner
+        drawTransitionBanner('TUTORIAL_OUTRO', p);
+
+        // 2. Spin & implode the tutorial target shapes down into the central gravity well
+        tutShapeAnchor.rotation.y += dt * (3.5 + p * 12.0);
+        tutShapeAnchor.rotation.z += dt * 2.4;
+        const shrink = Math.max(0.001, 1.0 - Math.pow(p, 1.6));
+        tutShapeAnchor.scale.setScalar(shrink * (1.0 + Math.sin(p * Math.PI) * 0.35));
+        tutShapeAnchor.position.y = THREE.MathUtils.lerp(POLAR_ORIGIN.y + 2.4, POLAR_ORIGIN.y + 0.5, easeIn);
+        tutDockRingMat.opacity = (1.0 - p) * 0.65;
+
+        // 3. Inward contracting shockwave ring into the gravity pit
+        shockwaveRings.forEach((sw, idx) => {
+          const localP = THREE.MathUtils.clamp((p - idx * 0.12) / 0.75, 0.0, 1.0);
+          const rScale = THREE.MathUtils.lerp(DECK_OUTER_R, 0.4, localP);
+          sw.mesh.scale.setScalar(Math.max(0.1, rScale));
+          sw.mat.opacity = Math.sin(localP * Math.PI) * 0.65;
+        });
+
+        if (p >= 1.0) {
+          // Switch from Tutorial Outro -> Real Content Intro Animation!
+          transitionState.phase = 'CONTENT_INTRO';
+          transitionState.timer = 0.0;
+          tutorialState.active = false;
+          tutorialState.completed = true;
+
+          // Hide tutorial shapes, reveal central planetary core, pedestal ring, orbs & screen bays
+          tutShapeMeshes.forEach(s => { s.grp.visible = false; });
+          tutDockRingMat.opacity = 0.0;
+
+          monolithSphereMesh.visible = true;
+          geoShellWire.visible = true;
+          coreGroup.position.set(CORE_BASE_POS.x, POLAR_ORIGIN.y - 0.6, CORE_BASE_POS.z);
+          coreGroup.scale.setScalar(0.02);
+          coreState.explodeFactor = 1.65;
+          coreState.targetExplode = 0.0;
+
+          pedestalOrbRingLine.visible = true;
+          screenWallGroup.visible = true;
+
+          // Spin the pedestal carousel in with a sweeping intro velocity
+          carouselState.rotation = -Math.PI * 1.35;
+          carouselState.targetRotation = 0.0;
+          carouselState.hasTargetSnap = true;
+          carouselState.isTurning = false;
+
+          hudCards.forEach((card, i) => {
+            card.mesh.visible = true;
+            card.scale = 0.01;
+            card.transitionProgress = 0.0;
+            card.transitionDelay = 0.28 + i * 0.14;
+            card.isTransitioning = true;
+          });
+
+          spawnOrFocusBackScreen(selectedCardId, 2);
+          synth.playExplodeChord(true);
+          redrawCockpitZoneHeaders("INITIALIZING ROTUNDA WORKSPACE...", "#0ea5e9");
+          showToast("launching spatial rotunda // materializing orbs & bays");
+        }
+      } else if (transitionState.phase === 'CONTENT_INTRO') {
+        const p = Math.min(1.0, transitionState.timer / transitionState.introDuration);
+        const easeOut = 1.0 - Math.pow(1.0 - p, 3);
+
+        // 1. Update & fade out the "ROTUNDA ONLINE" far-wall intro banner
+        drawTransitionBanner('CONTENT_INTRO', p);
+        tutCardPlane.position.y = 3.1 + easeOut * 1.4;
+
+        // 2. Elevate the Planetary Core out of the central gravity well pit
+        coreGroup.position.y = THREE.MathUtils.lerp(POLAR_ORIGIN.y - 0.6, CORE_BASE_POS.y, easeOut);
+
+        // 3. Expanding radial floor shockwaves across the polar rotunda
+        shockwaveRings.forEach((sw, idx) => {
+          const localP = THREE.MathUtils.clamp((p - idx * 0.14) / 0.80, 0.0, 1.0);
+          const rScale = THREE.MathUtils.lerp(0.6, POLAR_OUTER_R * 0.95, 1.0 - Math.pow(1.0 - localP, 2.2));
+          sw.mesh.scale.setScalar(rScale);
+          sw.mat.opacity = Math.sin(localP * Math.PI) * 0.72;
+        });
+
+        // 4. Staggered illumination of the 5 Panoramic Screen Bay wireframes
+        screenBays.forEach((bay, idx) => {
+          const distFromCenter = Math.abs(idx - 2);
+          const bayP = THREE.MathUtils.clamp((p - distFromCenter * 0.16) * 2.2, 0.0, 1.0);
+          bay.frameWire.scale.setScalar(0.75 + 0.25 * bayP);
+          bay.frameMat.opacity = (bay.isCenter ? 0.45 : 0.25) * bayP;
+        });
+
+        if (p >= 1.0) {
+          transitionState.phase = 'NONE';
+          tutorialGroup.visible = false;
+          shockwaveRings.forEach(sw => { sw.mat.opacity = 0.0; });
+          redrawCockpitZoneHeaders("PEDESTAL CAROUSEL & SCREEN BAYS ACTIVE", "#22c55e");
+          showToast("workspace online // swipe palm or pinch to control");
+        }
+      }
+    }
+
+    function advanceTutorialStep() {
+      if (transitionState.phase !== 'NONE') return;
+      synth.init();
+      synth.playFingerTapChord(tutorialState.stepIndex + 1);
+      if (tutorialState.stepIndex < tutorialSteps.length - 1) {
+        setTutorialStep(tutorialState.stepIndex + 1);
+        showToast(`tutorial step 0${tutorialState.stepIndex + 1}/04`);
+      } else {
+        // Trigger dedicated Tutorial End Animation -> Real Content Intro Sequence
+        startTutorialEndAndContentIntro();
+      }
+    }
+
+    /**************************************************************************
+     * 6. PEDESTAL ORB CAROUSEL + 5 PANORAMIC PINNABLE BACK SCREEN BAYS
+     **************************************************************************/
+    const PIXELS = new Float32Array(
+      [
+        1, 1.5, 2, 2.5, 3, 1, 1.5, 2, 2.5, 3, 3.5, 4, 2, 2.5, 3, 3.5, 4, 4.5, 5,
+        5.5, 6, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8, 8.5, 9, 20, 100,
+      ].map((v) => v / 100)
+    );
+
+    const orbVertexShader = `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `;
+
+    const orbFragmentShader = `
+      uniform float uProgress;
+      uniform vec3 uFillColor;
+      uniform sampler2D uTexture;
+      varying vec2 vUv;
+
+      float quadraticInOut(float t) {
+        float p = 2.0 * t * t;
+        return t < 0.5 ? p : -p + (4.0 * t) - 1.0;
+      }
+
+      void main() {
+        vec2 distVec = vUv - vec2(0.5);
+        if (length(distVec) > 0.5) discard;
+
+        float progress = quadraticInOut(1.0 - uProgress);
+        vec2 gridSize = vec2(38.0, 38.0);
+        float v = smoothstep(0.0, 1.0, vUv.y + sin(vUv.x * 4.0 + progress * 6.0) * 0.12 * smoothstep(0.0, 0.2, progress) + (1.0 - progress * 2.0));
+        float mixnewUV = (vUv.x * 2.0 + (1.0 - v) * 32.0) * progress;
+        vec2 subUv = mix(vUv, floor(vUv * gridSize) / gridSize, clamp(mixnewUV, 0.0, 1.0));
+
+        vec4 color = texture2D(uTexture, subUv);
+        color.a *= pow(v, 1.15);
+        color.rgb = mix(color.rgb, uFillColor, smoothstep(0.5, 0.0, abs(0.5 - color.a)) * progress);
+        gl_FragColor = color;
+      }
+    `;
+
+    // Pedestal Carousel State (Allows turning the entire middle unit around the round pedestal)
+    const PEDESTAL_ORB_RADIUS = (DECK_INNER_R + DECK_MID_R) * 0.52; // ~4.35m on the round pedestal
+    const carouselState = {
+      rotation: 0.0,
+      targetRotation: 0.0,
+      hasTargetSnap: false,
+      velRotation: 0.0,
+      isTurning: false,
+      lastDetentIdx: 0,
+      swipeCooldown: 0.0
+    };
+
+    function snapWheelToOrbIndex(idx) {
+      const card = hudCards[idx];
+      if (!card) return;
+      // Shortest angular path so the target orb rotates smoothly to the front (worldAngle = 0)
+      const desiredRot = -card.baseAngle;
+      let diff = ((desiredRot - carouselState.rotation + Math.PI) % (Math.PI * 2)) - Math.PI;
+      if (diff < -Math.PI) diff += Math.PI * 2;
+      carouselState.targetRotation = carouselState.rotation + diff;
+      carouselState.hasTargetSnap = true;
+      carouselState.isTurning = false;
+
+      spawnOrFocusBackScreen(card.id, 2);
+      redrawCockpitZoneHeaders(`ORB ${card.title} // SELECTED`, card.accent);
+      showToast(`shortcut [0${idx + 1}] // wheel snapped to Orb ${card.title}`);
+    }
+
+    function getPedestalSurfaceY(worldTheta) {
+      // Follows the inclined slope of the horseshoe pedestal
+      const zNorm = (-Math.cos(worldTheta) + 1) * 0.5;
+      const rampH = 0.28 + (1.75 - 0.28) * Math.pow(zNorm, 1.15);
+      return POLAR_ORIGIN.y + rampH + 0.68;
+    }
+
+    // Subtle Pedestal Orbital Track Ring
+    const pedestalRingPts = [];
+    for (let i = 0; i <= 96; i++) {
+      const th = (i / 96) * Math.PI * 2;
+      const x = POLAR_ORIGIN.x + Math.sin(th) * PEDESTAL_ORB_RADIUS;
+      const z = POLAR_ORIGIN.z + Math.cos(th) * PEDESTAL_ORB_RADIUS;
+      const y = getPedestalSurfaceY(th) - 0.25;
+      pedestalRingPts.push(new THREE.Vector3(x, y, z));
+    }
+    const pedestalOrbRingLine = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pedestalRingPts),
+      new THREE.LineBasicMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.45 })
+    );
+    pedestalOrbRingLine.visible = false;
+    scene.add(pedestalOrbRingLine);
+
+    // Keep legacy references safe
+    const guideArcLine = pedestalOrbRingLine;
+    const detentTicks = new THREE.Group();
+    // 6 Orbs sequentially ordered (01 to 06) at clean 60-degree intervals around the pedestal
+    const ORB_STEP_ANGLE = (Math.PI * 2) / 6;
+    const cardConfigs = [
+      { id: 'books',   node: 'conduits',  title: '01', subtitle: 'THE CONDUITS',      metric: 'ASTROPHYSICIST NODE', icon: 'books',  baseAngle: 0 * ORB_STEP_ANGLE, accent: '#22c55e' },
+      { id: 'photos',  node: 'resonator', title: '02', subtitle: 'THE RESONATOR',     metric: 'ASTROPHYSICIST NODE', icon: 'photos', baseAngle: 1 * ORB_STEP_ANGLE, accent: '#0ea5e9' },
+      { id: 'music',   node: 'glyph',     title: '03', subtitle: 'THE GLYPH LOCK',    metric: 'XENOLINGUIST NODE',   icon: 'music',  baseAngle: 2 * ORB_STEP_ANGLE, accent: '#f59e0b' },
+      { id: 'home',    node: 'descent',   title: '04', subtitle: 'THE DESCENT',       metric: 'XENOLINGUIST NODE',   icon: 'home',   baseAngle: 3 * ORB_STEP_ANGLE, accent: '#ec4899' },
+      { id: 'core',    node: 'echo',      title: '05', subtitle: 'THE ECHO CHAMBER',  metric: 'XENOLINGUIST NODE',   icon: 'core',   baseAngle: 4 * ORB_STEP_ANGLE, accent: '#8b5cf6' },
+      { id: 'archive', node: 'vent',      title: '06', subtitle: 'THE PRESSURE VENT', metric: 'INTERRUPT NODE',      icon: 'books',  baseAngle: 5 * ORB_STEP_ANGLE, accent: '#10b981' }
+    ];
+
+    function drawMinimalNodeIcon(ctx, type, cx, cy, s) {
+      ctx.save();
+      ctx.strokeStyle = '#ffffff';
+      ctx.fillStyle = '#ffffff';
+      ctx.lineWidth = 5;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      if (type === 'books') {
+        ctx.beginPath();
+        ctx.arc(cx, cy - s * 0.36, s * 0.22, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(cx - s * 0.48, cy + s * 0.18);
+        ctx.quadraticCurveTo(cx, cy + s * 0.36, cx + s * 0.48, cy + s * 0.18);
+        ctx.moveTo(cx - s * 0.42, cy + s * 0.34);
+        ctx.quadraticCurveTo(cx, cy + s * 0.52, cx + s * 0.42, cy + s * 0.34);
+        ctx.stroke();
+      } else if (type === 'photos') {
+        ctx.strokeRect(cx - s * 0.42, cy - s * 0.32, s * 0.84, s * 0.64);
+        ctx.beginPath();
+        ctx.arc(cx - s * 0.15, cy - s * 0.08, s * 0.1, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(cx - s * 0.36, cy + s * 0.24);
+        ctx.lineTo(cx - s * 0.05, cy - s * 0.04);
+        ctx.lineTo(cx + s * 0.15, cy + s * 0.14);
+        ctx.lineTo(cx + s * 0.28, cy + s * 0.02);
+        ctx.lineTo(cx + s * 0.38, cy + s * 0.24);
+        ctx.stroke();
+      } else if (type === 'music') {
+        ctx.beginPath();
+        ctx.arc(cx, cy - s * 0.05, s * 0.38, Math.PI, 0);
+        ctx.stroke();
+        ctx.fillRect(cx - s * 0.44, cy - s * 0.08, s * 0.16, s * 0.34);
+        ctx.fillRect(cx + s * 0.28, cy - s * 0.08, s * 0.16, s * 0.34);
+      } else if (type === 'home') {
+        ctx.beginPath();
+        ctx.moveTo(cx - s * 0.44, cy - s * 0.02);
+        ctx.lineTo(cx, cy - s * 0.44);
+        ctx.lineTo(cx + s * 0.44, cy - s * 0.02);
+        ctx.stroke();
+        ctx.fillRect(cx - s * 0.28, cy - s * 0.02, s * 0.56, s * 0.42);
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - s * 0.46);
+        ctx.lineTo(cx + s * 0.42, cy - s * 0.2);
+        ctx.lineTo(cx + s * 0.42, cy + s * 0.24);
+        ctx.lineTo(cx, cy + s * 0.48);
+        ctx.lineTo(cx - s * 0.42, cy + s * 0.24);
+        ctx.lineTo(cx - s * 0.42, cy - s * 0.2);
+        ctx.closePath();
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawCardTelemetry(card) {
+      // 3 Distinct Visual States:
+      // 1. NEUTRAL  : Compact, quiet dark slate node on the pedestal
+      // 2. SELECTED : Highlighted node (hovered, grabbed, or pinned to a side bay) with accent border ring
+      // 3. VIEWING  : Active hero node currently projected on the Center Stage screen
+      const centerBayCard = backScreenCards.find(sc => sc.bayIdx === 2);
+      const isViewing = (card.id === selectedCardId) && (!centerBayCard || centerBayCard.orbId === card.id);
+      const hasPinnedScreen = backScreenCards.some(sc => sc.orbId === card.id && sc.bayIdx !== 2);
+      const isSelected = !isViewing && (card.isHovered || card.isGrabbed || (card.id === selectedCardId) || hasPinnedScreen);
+
+      const stateMode = isViewing ? 'VIEWING' : (isSelected ? 'SELECTED' : 'NEUTRAL');
+      const nodeOpen = pfNodeSolved(card.node);
+      const cardSig = `${stateMode}|${hasPinnedScreen ? 1 : 0}|${nodeOpen ? 1 : 0}`;
+      card.visualState = stateMode;
+      if (card.lastDrawSig === cardSig) return;
+      card.lastDrawSig = cardSig;
+
+      const ctx = card.ctx;
+      const w = card.canvas.width;
+      const h = card.canvas.height;
+      const cx = w * 0.5;
+      const cy = h * 0.5;
+      ctx.clearRect(0, 0, w, h);
+
+      const radius = stateMode === 'VIEWING' ? w * 0.39 : (stateMode === 'SELECTED' ? w * 0.36 : w * 0.31);
+
+      if (stateMode === 'VIEWING') {
+        // VIEWING STATE: Vibrant illuminated fill, double outer reticle brackets, & "VIEWING" live badge
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#22c55e';
+        ctx.fill();
+
+        ctx.lineWidth = 8;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+
+        // Outer segmented telemetry brackets
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius + 26, -Math.PI * 0.84, -Math.PI * 0.16);
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 5;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius + 26, Math.PI * 0.16, Math.PI * 0.84);
+        ctx.stroke();
+
+        // Cardinal crosshair ticks
+        for (let a = 0; a < 4; a++) {
+          const ang = (a * Math.PI) * 0.5;
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(ang) * (radius + 10), cy + Math.sin(ang) * (radius + 10));
+          ctx.lineTo(cx + Math.cos(ang) * (radius + 36), cy + Math.sin(ang) * (radius + 36));
+          ctx.stroke();
+        }
+
+        // Top pill tag: LIVE VIEWING
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(cx - 82, cy - 122, 164, 34);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '600 18px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('● VIEWING', cx, cy - 105);
+
+        // Bold Hero Number
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '600 144px "Inter", sans-serif';
+        ctx.fillText(card.title, cx, cy + 4);
+
+        ctx.fillStyle = '#0f172a';
+        ctx.font = '600 22px "JetBrains Mono", monospace';
+        ctx.fillText('CENTER STAGE', cx, cy + 102);
+
+      } else if (stateMode === 'SELECTED') {
+        // SELECTED STATE: Deep high-contrast charcoal core with bright accent halo & dashed targeting ring
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#0f172a';
+        ctx.fill();
+
+        ctx.lineWidth = 7;
+        ctx.strokeStyle = card.accent || '#38bdf8';
+        ctx.stroke();
+
+        ctx.save();
+        ctx.setLineDash([14, 10]);
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius + 20, 0, Math.PI * 2);
+        ctx.strokeStyle = card.accent || '#38bdf8';
+        ctx.lineWidth = 3.5;
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.fillStyle = card.accent || '#38bdf8';
+        ctx.font = '600 19px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(hasPinnedScreen ? '◆ PINNED' : '◎ SELECTED', cx, cy - 94);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '400 124px "Inter", sans-serif';
+        ctx.fillText(card.title, cx, cy + 4);
+
+        ctx.fillStyle = '#cbd5e1';
+        ctx.font = '500 20px "JetBrains Mono", monospace';
+        ctx.fillText(`NODE ${card.title}`, cx, cy + 92);
+
+      } else {
+        // NEUTRAL STATE: Minimalist, subdued slate satellite dot (much smaller and quieter)
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(30, 41, 59, 0.78)';
+        ctx.fill();
+
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.40)';
+        ctx.stroke();
+
+        ctx.fillStyle = '#cbd5e1';
+        ctx.font = '300 108px "Inter", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(card.title, cx, cy);
+      }
+
+      if (nodeOpen) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius + 8, 0, Math.PI * 2);
+        ctx.strokeStyle = '#16a34a';
+        ctx.lineWidth = 12;
+        ctx.stroke();
+        ctx.fillStyle = '#16a34a';
+        ctx.fillRect(cx - 52, cy + radius - 30, 104, 34);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '600 20px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('OPEN', cx, cy + radius - 13);
+      }
+      ctx.textBaseline = 'alphabetic';
+      card.texture.needsUpdate = true;
+    }
+
+    cardConfigs.forEach((cfg, idx) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.minFilter = THREE.LinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      texture.generateMipmaps = false;
+
+      const mat = new THREE.ShaderMaterial({
+        vertexShader: orbVertexShader,
+        fragmentShader: orbFragmentShader,
+        uniforms: {
+          uProgress: { value: 1.0 },
+          uFillColor: { value: new THREE.Color('#68b85b') },
+          uTexture: { value: texture }
+        },
+        transparent: true,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      });
+
+      const nodeGroup = new THREE.Group();
+      const discMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.38, 1.38), mat);
+      nodeGroup.add(discMesh);
+
+      // Subtle 3D Wireframe Ring around each Pedestal Orb
+      const gyroRingMat = new THREE.LineBasicMaterial({ color: 0x64748b, transparent: true, opacity: 0.22 });
+      const gyroRing = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.CylinderGeometry(0.62, 0.62, 0.12, 28, 1, true)),
+        gyroRingMat
+      );
+      gyroRing.rotation.x = Math.PI * 0.5;
+      nodeGroup.add(gyroRing);
+
+      // Outer Viewing Halo Ring (Only visible in VIEWING / SELECTED states)
+      const outerBeaconMat = new THREE.MeshBasicMaterial({
+        color: cfg.accent,
+        transparent: true,
+        opacity: 0.0,
+        side: THREE.DoubleSide
+      });
+      const outerBeaconRing = new THREE.Mesh(new THREE.RingGeometry(0.72, 0.77, 48), outerBeaconMat);
+      nodeGroup.add(outerBeaconRing);
+
+      // Vertical Stem tethering each Orb to the rotating pedestal surface
+      const stemGeom = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, -0.55, 0),
+        new THREE.Vector3(0, -1.05, 0)
+      ]);
+      const stemMat = new THREE.LineBasicMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.35 });
+      const stemLine = new THREE.Line(stemGeom, stemMat);
+      nodeGroup.add(stemLine);
+
+      nodeGroup.visible = false;
+      scene.add(nodeGroup);
+
+      const cardObj = {
+        id: cfg.id,
+        node: cfg.node,
+        posNumber: idx + 1,
+        title: cfg.title,
+        subtitle: cfg.subtitle,
+        metric: cfg.metric,
+        accent: cfg.accent,
+        icon: cfg.icon,
+        baseAngle: cfg.baseAngle,
+        worldAngle: cfg.baseAngle,
+        y: 0,
+        scale: 0.42,
+        scaleVel: 0.0,
+        zPunchOffset: 0.0,
+        visualState: 'NEUTRAL',
+        isHovered: false,
+        isGrabbed: false,
+        transitionProgress: 1.0,
+        transitionDelay: 0.0,
+        isTransitioning: false,
+        canvas,
+        ctx,
+        texture,
+        mat,
+        mesh: nodeGroup,
+        gyroRing,
+        gyroRingMat,
+        outerBeaconRing,
+        outerBeaconMat,
+        stemMat
+      };
+
+      drawCardTelemetry(cardObj);
+      hudCards.push(cardObj);
+    });
+
+    /**************************************************************************
+     * 6B. 5 PANORAMIC CURVED BACK SCREEN BAYS (Pin Cards Across the Arch)
+     **************************************************************************/
+    const screenWallGroup = new THREE.Group();
+    screenWallGroup.visible = false;
+    scene.add(screenWallGroup);
+
+    const SCREEN_WALL_R = 11.8;
+    const SCREEN_WALL_Y = 2.65;
+    const SCREEN_WALL_Z_OFFSET = 2.2;
+
+    // 5 Bays matching your pink reference drawing: Far-Left, Mid-Left, Center Hero, Mid-Right, Far-Right
+    const screenBayConfigs = [
+      { bayIdx: 0, name: 'WING BAY L2', theta: -0.78, arcSpan: 0.28, height: 2.65, isCenter: false },
+      { bayIdx: 1, name: 'SIDE BAY L1', theta: -0.44, arcSpan: 0.31, height: 3.10, isCenter: false },
+      { bayIdx: 2, name: 'CENTER STAGE SCREEN', theta: 0.0, arcSpan: 0.42, height: 3.95, isCenter: true },
+      { bayIdx: 3, name: 'SIDE BAY R1', theta: 0.44,  arcSpan: 0.31, height: 3.10, isCenter: false },
+      { bayIdx: 4, name: 'WING BAY R2', theta: 0.78,  arcSpan: 0.28, height: 2.65, isCenter: false }
+    ];
+
+    const screenBays = screenBayConfigs.map((cfg) => {
+      // Build a subtle wireframe docking frame in the back arch so the user sees where cards can be pinned
+      const frameGeom = createConcaveCurvedSurfaceGeometry(SCREEN_WALL_R, cfg.height, cfg.arcSpan, 24, 1);
+      const frameEdges = new THREE.EdgesGeometry(frameGeom);
+      const frameMat = new THREE.LineBasicMaterial({
+        color: cfg.isCenter ? 0x64748b : 0x94a3b8,
+        transparent: true,
+        opacity: cfg.isCenter ? 0.45 : 0.25
+      });
+      const frameWire = new THREE.LineSegments(frameEdges, frameMat);
+      frameWire.position.set(0, SCREEN_WALL_Y, SCREEN_WALL_Z_OFFSET);
+      frameWire.rotation.y = -cfg.theta;
+      screenWallGroup.add(frameWire);
+
+      const worldPos = new THREE.Vector3(
+        Math.sin(cfg.theta) * SCREEN_WALL_R,
+        SCREEN_WALL_Y,
+        -Math.cos(cfg.theta) * SCREEN_WALL_R + SCREEN_WALL_Z_OFFSET
+      );
+
+      return {
+        ...cfg,
+        frameWire,
+        frameMat,
+        worldPos,
+        pinnedCard: null,
+        isHighlighted: false
+      };
+    });
+
+    function drawBackScreenCardCanvas(screenCard) {
+      pfDrawCard(screenCard);
+    }
+
+    function createBackScreenCard(orbId, bayIdx = 2) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1280;
+      canvas.height = 850;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(1280 / 1024, 850 / 680);
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.minFilter = THREE.LinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      texture.generateMipmaps = false;
+
+      const bay = screenBays[bayIdx] || screenBays[2];
+      const geom = createConcaveCurvedSurfaceGeometry(SCREEN_WALL_R - 0.15, 3.35, 0.34, 24, 1);
+      const mat = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        opacity: 0.96,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      });
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.position.set(0, SCREEN_WALL_Y, SCREEN_WALL_Z_OFFSET);
+      screenWallGroup.add(mesh);
+
+      const card = {
+        orbId,
+        bayIdx,
+        theta: bay.theta,
+        targetTheta: bay.theta,
+        y: SCREEN_WALL_Y,
+        targetY: SCREEN_WALL_Y,
+        scale: 0.2,
+        targetScale: bay.isCenter ? 1.08 : 0.84,
+        isHovered: false,
+        isGrabbed: false,
+        canvas,
+        ctx,
+        texture,
+        mat,
+        mesh,
+        worldCenter: new THREE.Vector3()
+      };
+
+      drawBackScreenCardCanvas(card);
+      backScreenCards.push(card);
+      return card;
+    }
+
+    function spawnOrFocusBackScreen(orbId, targetBayIdx = 2) {
+      selectedCardId = orbId;
+      setCoreShapeForOrb(orbId);
+      hudCards.forEach(c => drawCardTelemetry(c));
+
+      // Check if this orb already has a screen card on the wall
+      let existing = backScreenCards.find(sc => sc.orbId === orbId);
+      const occupant = backScreenCards.find(sc => sc.bayIdx === targetBayIdx && sc.orbId !== orbId);
+
+      if (existing) {
+        if (occupant) {
+          // Swap bays cleanly
+          occupant.bayIdx = existing.bayIdx;
+          occupant.targetTheta = screenBays[occupant.bayIdx].theta;
+          occupant.targetScale = screenBays[occupant.bayIdx].isCenter ? 1.08 : 0.84;
+          drawBackScreenCardCanvas(occupant);
+        }
+        existing.bayIdx = targetBayIdx;
+        existing.targetTheta = screenBays[targetBayIdx].theta;
+        existing.targetScale = screenBays[targetBayIdx].isCenter ? 1.08 : 0.84;
+        existing.scale = Math.max(0.65, existing.scale * 0.88);
+        drawBackScreenCardCanvas(existing);
+      } else {
+        if (occupant) {
+          // Auto-pin the previous center card to the nearest open side bay!
+          const openSideBay = [1, 3, 0, 4].find(bIdx => !backScreenCards.some(sc => sc.bayIdx === bIdx));
+          if (openSideBay !== undefined) {
+            occupant.bayIdx = openSideBay;
+            occupant.targetTheta = screenBays[openSideBay].theta;
+            occupant.targetScale = 0.84;
+            drawBackScreenCardCanvas(occupant);
+          } else {
+            // Replace oldest side bay card
+            screenWallGroup.remove(occupant.mesh);
+            const idx = backScreenCards.indexOf(occupant);
+            if (idx > -1) backScreenCards.splice(idx, 1);
+          }
+        }
+        existing = createBackScreenCard(orbId, targetBayIdx);
+      }
+      // Refresh all orb textures so NEUTRAL / SELECTED / VIEWING badges stay synchronized
+      hudCards.forEach(c => drawCardTelemetry(c));
+    }
+
+    function pinActiveScreenToNextOpenBay() {
+      const centerCard = backScreenCards.find(sc => sc.bayIdx === 2) || backScreenCards[backScreenCards.length - 1];
+      if (!centerCard) return;
+      const sideBays = [1, 3, 0, 4];
+      const nextBay = sideBays.find(bIdx => !backScreenCards.some(sc => sc.bayIdx === bIdx)) || sideBays[0];
+      spawnOrFocusBackScreen(centerCard.orbId, nextBay);
+      synth.playFingerTapChord(4);
+      showToast(`pinned ${centerCard.orbId.toUpperCase()} screen to ${screenBays[nextBay].name}`);
+    }
+
+    function positionCardsOnCylinder(dt) {
+      // 1. Update Rotating Pedestal Orb Carousel (Supports smooth shortcut snap + pull/swipe momentum)
+      carouselState.swipeCooldown = Math.max(0, carouselState.swipeCooldown - dt);
+
+      if (carouselState.hasTargetSnap && !carouselState.isTurning) {
+        const diff = carouselState.targetRotation - carouselState.rotation;
+        carouselState.rotation += diff * Math.min(1.0, dt * 8.5);
+        carouselState.velRotation = diff * 0.12;
+        if (Math.abs(diff) < 0.004) {
+          carouselState.rotation = carouselState.targetRotation;
+          carouselState.hasTargetSnap = false;
+          carouselState.velRotation = 0.0;
+        }
+      } else if (!carouselState.isTurning) {
+        carouselState.rotation += carouselState.velRotation * dt * 60;
+        // Low-friction glide so a fast flick spins smoothly across multiple orbs
+        carouselState.velRotation *= Math.pow(0.955, dt * 60);
+
+        // Gentle magnetic settle toward the nearest front orb when wheel slows down
+        if (Math.abs(carouselState.velRotation) > 0.0001 && Math.abs(carouselState.velRotation) < 0.008 && !tutorialState.active) {
+          let frontCard = null;
+          let minAngleDist = 999;
+          hudCards.forEach((c) => {
+            const normA = Math.atan2(Math.sin(c.baseAngle + carouselState.rotation), Math.cos(c.baseAngle + carouselState.rotation));
+            if (Math.abs(normA) < minAngleDist) {
+              minAngleDist = Math.abs(normA);
+              frontCard = c;
+            }
+          });
+          if (frontCard && minAngleDist < 0.48) {
+            const snapDelta = Math.atan2(Math.sin(-frontCard.baseAngle - carouselState.rotation), Math.cos(-frontCard.baseAngle - carouselState.rotation));
+            carouselState.rotation += snapDelta * dt * 4.2;
+            if (selectedCardId !== frontCard.id && minAngleDist < 0.18) {
+              spawnOrFocusBackScreen(frontCard.id, 2);
+              redrawCockpitZoneHeaders(`ORB ${frontCard.title} // LOCKED`, frontCard.accent);
+            }
+          }
+        }
+      }
+
+      const rotDetent = Math.round(carouselState.rotation / 0.14);
+      if (rotDetent !== carouselState.lastDetentIdx) {
+        carouselState.lastDetentIdx = rotDetent;
+        if (Math.abs(carouselState.velRotation) > 0.002 || carouselState.isTurning || carouselState.hasTargetSnap) {
+          synth.playDetentTick(Math.abs(carouselState.velRotation) * 40 + 1);
+        }
+      }
+
+      hudCards.forEach((card) => {
+        if (!card.mesh.visible) return;
+
+        card.worldAngle = card.baseAngle + carouselState.rotation;
+
+        // Determine current 3-tier state: VIEWING vs SELECTED vs NEUTRAL
+        const centerBayCard = backScreenCards.find(sc => sc.bayIdx === 2);
+        const isViewing = (card.id === selectedCardId) && (!centerBayCard || centerBayCard.orbId === card.id);
+        const hasPinnedScreen = backScreenCards.some(sc => sc.orbId === card.id && sc.bayIdx !== 2);
+        const isSelected = !isViewing && (card.isHovered || card.isGrabbed || (card.id === selectedCardId) || hasPinnedScreen);
+        const desiredState = isViewing ? 'VIEWING' : (isSelected ? 'SELECTED' : 'NEUTRAL');
+
+        if (card.visualState !== desiredState) {
+          drawCardTelemetry(card);
+        }
+
+        // Dramatic size hierarchy:
+        // - NEUTRAL  : 0.42x (compact satellite orb on the pedestal)
+        // - SELECTED : 0.78x (medium-scale highlighted orb)
+        // - VIEWING  : 1.18x (prominent hero orb actively projected on Center Stage)
+        const targetScale = card.isGrabbed
+          ? 1.26
+          : (isViewing ? (card.isHovered ? 1.24 : 1.16) : (isSelected ? 0.78 : 0.42));
+
+        const springForce = (targetScale - card.scale) * 180.0;
+        card.scaleVel += springForce * dt;
+        card.scaleVel *= Math.pow(0.76, dt * 60);
+        card.scale += card.scaleVel * dt;
+
+        const x = POLAR_ORIGIN.x + Math.sin(card.worldAngle) * PEDESTAL_ORB_RADIUS;
+        const z = POLAR_ORIGIN.z + Math.cos(card.worldAngle) * PEDESTAL_ORB_RADIUS;
+        const surfaceY = getPedestalSurfaceY(card.worldAngle);
+        const stateLift = isViewing ? 0.38 : (isSelected ? 0.18 : -0.12);
+        card.y = THREE.MathUtils.lerp(card.y || surfaceY, surfaceY + stateLift, dt * 10.0);
+
+        card.mesh.position.set(x, card.y, z);
+        card.mesh.scale.setScalar(Math.max(0.28, card.scale));
+
+        // Orient orb toward the seated viewer
+        card.mesh.lookAt(camera.position.x, card.y + 0.25, camera.position.z);
+        card.gyroRing.rotation.z += dt * (isViewing ? 2.2 : (isSelected ? 1.1 : 0.25));
+
+        if (card.gyroRingMat) {
+          card.gyroRingMat.color.set(isViewing ? '#22c55e' : (isSelected ? card.accent : '#64748b'));
+          card.gyroRingMat.opacity = isViewing ? 0.78 : (isSelected ? 0.52 : 0.18);
+        }
+        if (card.outerBeaconMat) {
+          card.outerBeaconMat.color.set(isViewing ? '#22c55e' : card.accent);
+          card.outerBeaconMat.opacity = THREE.MathUtils.lerp(
+            card.outerBeaconMat.opacity,
+            isViewing ? 0.85 : (isSelected ? 0.42 : 0.0),
+            dt * 10.0
+          );
+          card.outerBeaconRing.scale.setScalar(isViewing ? (1.0 + Math.sin(performance.now() * 0.005) * 0.06) : 1.0);
+        }
+        if (card.stemMat) {
+          card.stemMat.opacity = isViewing ? 0.75 : (isSelected ? 0.45 : 0.20);
+        }
+
+        if (card.isTransitioning) {
+          if (card.transitionDelay > 0) {
+            card.transitionDelay -= dt;
+          } else {
+            card.transitionProgress = Math.min(1.0, card.transitionProgress + dt * 1.45);
+            card.mat.uniforms.uProgress.value = card.transitionProgress;
+            if (card.transitionProgress >= 1.0) {
+              card.isTransitioning = false;
+            }
+          }
+        }
+      });
+
+      // 2. Update Panoramic Curved Back Screen Cards
+      backScreenCards.forEach((sc) => {
+        if (!sc.isGrabbed) {
+          sc.theta = THREE.MathUtils.lerp(sc.theta, sc.targetTheta, dt * 9.0);
+          sc.y = THREE.MathUtils.lerp(sc.y, sc.targetY, dt * 9.0);
+        }
+        const goalScale = sc.isGrabbed ? 1.12 : (sc.isHovered ? sc.targetScale * 1.04 : sc.targetScale);
+        sc.scale = THREE.MathUtils.lerp(sc.scale, goalScale, dt * 10.0);
+
+        sc.mesh.rotation.y = -sc.theta;
+        sc.mesh.position.y = sc.y;
+        sc.mesh.scale.setScalar(sc.scale);
+
+        sc.worldCenter.set(
+          Math.sin(sc.theta) * (SCREEN_WALL_R - 0.15),
+          sc.y,
+          -Math.cos(sc.theta) * (SCREEN_WALL_R - 0.15) + SCREEN_WALL_Z_OFFSET
+        );
+      });
+    }
+
+    /**************************************************************************
+     * 7. 1-EURO ADAPTIVE FILTER & 5-FINGERTIP COLOR-CODED RIG (IDLE = GREY DOTS)
+     **************************************************************************/
+    class LowPassFilter {
+      constructor(alpha, initVal = 0) {
+        this.y = initVal;
+        this.s = initVal;
+        this.initialized = false;
+      }
+      filter(value, alpha) {
+        if (!this.initialized) {
+          this.s = value;
+          this.initialized = true;
+        } else {
+          this.s = alpha * value + (1.0 - alpha) * this.s;
+        }
+        this.y = value;
+        return this.s;
+      }
+    }
+
+    class OneEuroFilter {
+      constructor(freq = 60, minCutoff = 1.4, beta = 0.045, dCutoff = 1.0) {
+        this.freq = freq;
+        this.minCutoff = minCutoff;
+        this.beta = beta;
+        this.dCutoff = dCutoff;
+        this.x = new LowPassFilter(this.alpha(minCutoff));
+        this.dx = new LowPassFilter(this.alpha(dCutoff));
+        this.lastTime = null;
+      }
+      alpha(cutoff) {
+        const te = 1.0 / this.freq;
+        const tau = 1.0 / (2 * Math.PI * cutoff);
+        return 1.0 / (1.0 + tau / te);
+      }
+      filter(value, timestamp = null) {
+        if (this.lastTime !== null && timestamp !== null && timestamp > this.lastTime) {
+          this.freq = 1.0 / Math.max(0.001, (timestamp - this.lastTime) * 0.001);
+        }
+        this.lastTime = timestamp;
+        const dValue = this.x.initialized ? (value - this.x.s) * this.freq : 0.0;
+        const edValue = this.dx.filter(dValue, this.alpha(this.dCutoff));
+        const cutoff = this.minCutoff + this.beta * Math.abs(edValue);
+        return this.x.filter(value, this.alpha(cutoff));
+      }
+    }
+
+    class OneEuroFilterVec3 {
+      constructor(freq = 60, minCutoff = 1.4, beta = 0.045) {
+        this.fx = new OneEuroFilter(freq, minCutoff, beta);
+        this.fy = new OneEuroFilter(freq, minCutoff, beta);
+        this.fz = new OneEuroFilter(freq, minCutoff, beta);
+      }
+      filterTo(rawX, rawY, rawZ, timestamp, targetVec) {
+        targetVec.set(
+          this.fx.filter(rawX, timestamp),
+          this.fy.filter(rawY, timestamp),
+          this.fz.filter(rawZ, timestamp)
+        );
+        return targetVec;
+      }
+    }
+
+    // Streamlined 3-Finger Tracking Config: Only Thumb (0), Pointer/Index (1), and Middle (2)
+    // Ring and Pinky fingers are completely omitted and hidden.
+    const FINGERTIP_CONFIGS = [
+      { idx: 4,  mcpIdx: 2,  pipIdx: 3,  slot: 0, name: 'THUMB',   hex: 0x0f172a },
+      { idx: 8,  mcpIdx: 5,  pipIdx: 6,  slot: 1, name: 'POINTER', hex: 0x22c55e },
+      { idx: 12, mcpIdx: 9,  pipIdx: 10, slot: 2, name: 'MIDDLE',  hex: 0x0ea5e9 }
+    ];
+
+    const TOLERANCE = {
+      PINCH_ENGAGE: 0.90,
+      PINCH_RELEASE: 1.12,
+      FINGER_TAP_ENGAGE: 0.92,      // Generous threshold so thumb-to-pointer/middle activates effortlessly
+      FINGER_TAP_RELEASE: 1.15,
+      SWIPE_AXIS_GATE_X: 0.62,      // Visual gauge half-width
+      SWIPE_WINDOW_MS: 145,         // 145ms sliding window in raw 2D camera space (immune to 1-frame noise)
+      SWIPE_MIN_CAM_DX: 0.105,      // 10.5% of camera frame width traveled within 145ms triggers a crisp swipe
+      SWIPE_FAST_SPIN_DX: 0.21,     // 21% of camera width triggers a multi-orb momentum spin
+      SWIPE_HORIZ_RATIO: 1.45,      // Horizontal movement must be 1.45x larger than vertical movement
+      ORB_HOVER_RADIUS: 2.65,
+      TUT_HOVER_RADIUS: 2.75,
+      SWIPE_ZONE_X: 6.2,
+      SWIPE_ZONE_Y_MIN: -2.2,
+      SWIPE_ZONE_Y_MAX: 4.5
+    };
+
+    // Dedicated Fixed Center-Axis Swipe Rail (Anchored at World X = 0, scaled to 1/4 width)
+    const swipeCorridorGroup = new THREE.Group();
+    swipeCorridorGroup.position.set(0, 1.05, 1.85);
+    scene.add(swipeCorridorGroup);
+
+    const swipeZoneHalfW = 0.95;
+    const swipeZoneHalfH = 0.52;
+    const swipeBorderPts = [
+      new THREE.Vector3(-swipeZoneHalfW, -swipeZoneHalfH, 0),
+      new THREE.Vector3( swipeZoneHalfW, -swipeZoneHalfH, 0),
+      new THREE.Vector3( swipeZoneHalfW,  swipeZoneHalfH, 0),
+      new THREE.Vector3(-swipeZoneHalfW,  swipeZoneHalfH, 0),
+      new THREE.Vector3(-swipeZoneHalfW, -swipeZoneHalfH, 0)
+    ];
+    const swipeCorridorMat = new THREE.LineBasicMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.0 });
+    const swipeCorridorFrame = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(swipeBorderPts),
+      swipeCorridorMat
+    );
+    swipeCorridorGroup.add(swipeCorridorFrame);
+
+    // Horizontal Swipe Rail spanning from Left Edge Gate (-gateX) to Right Edge Gate (+gateX)
+    const gateX = TOLERANCE.SWIPE_AXIS_GATE_X;
+    const swipeAxisPts = [
+      new THREE.Vector3(-gateX, 0, 0),
+      new THREE.Vector3( gateX, 0, 0)
+    ];
+    const swipeAxisMat = new THREE.LineBasicMaterial({ color: 0x64748b, transparent: true, opacity: 0.0 });
+    const swipeAxisLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(swipeAxisPts), swipeAxisMat);
+    swipeCorridorGroup.add(swipeAxisLine);
+
+    // Fixed Center Axis Vertical Marker (X = 0) and Outer Edge Activation Gates (-gateX / +gateX)
+    const centerAndGatePts = [
+      new THREE.Vector3(0, -0.32, 0), new THREE.Vector3(0, 0.32, 0),
+      new THREE.Vector3(-gateX, -0.45, 0), new THREE.Vector3(-gateX, 0.45, 0),
+      new THREE.Vector3( gateX, -0.45, 0), new THREE.Vector3( gateX, 0.45, 0)
+    ];
+    const swipeGatesMat = new THREE.LineBasicMaterial({ color: 0x0f172a, transparent: true, opacity: 0.0 });
+    const swipeGatesLines = new THREE.LineSegments(
+      new THREE.BufferGeometry().setFromPoints(centerAndGatePts),
+      swipeGatesMat
+    );
+    swipeCorridorGroup.add(swipeGatesLines);
+
+    // Velocity Sensor Gauge Bar above the Swipe Axis (Turns Green ONLY when speed >= SWIPE_MIN_VELOCITY)
+    const velMeterBgPts = [
+      new THREE.Vector3(-gateX, 0.38, 0),
+      new THREE.Vector3( gateX, 0.38, 0)
+    ];
+    const velMeterBgMat = new THREE.LineBasicMaterial({ color: 0xcbd5e1, transparent: true, opacity: 0.0 });
+    const velMeterBgLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(velMeterBgPts), velMeterBgMat);
+    swipeCorridorGroup.add(velMeterBgLine);
+
+    // Threshold markers on the Velocity Sensor Bar showing the required fast speed
+    const velThreshX = gateX * 0.65;
+    const velThreshPts = [
+      new THREE.Vector3(-velThreshX, 0.32, 0), new THREE.Vector3(-velThreshX, 0.44, 0),
+      new THREE.Vector3( velThreshX, 0.32, 0), new THREE.Vector3( velThreshX, 0.44, 0)
+    ];
+    const velThreshMat = new THREE.LineBasicMaterial({ color: 0x0f172a, transparent: true, opacity: 0.0 });
+    const velThreshLines = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(velThreshPts), velThreshMat);
+    swipeCorridorGroup.add(velThreshLines);
+
+    const swipeVelBarGeom = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0.38, 0),
+      new THREE.Vector3(0, 0.38, 0)
+    ]);
+    const swipeVelBarMat = new THREE.LineBasicMaterial({ color: 0x64748b, transparent: true, opacity: 0.0 });
+    const swipeVelBarLine = new THREE.Line(swipeVelBarGeom, swipeVelBarMat);
+    swipeCorridorGroup.add(swipeVelBarLine);
+
+    // Left & Right Outer Edge Activation Target Rings (Illuminate as hand approaches the edge)
+    const swipeLeftEdgeMat = new THREE.MeshBasicMaterial({ color: 0x64748b, transparent: true, opacity: 0.0, side: THREE.DoubleSide });
+    const swipeLeftEdgeNode = new THREE.Mesh(new THREE.RingGeometry(0.12, 0.17, 32), swipeLeftEdgeMat);
+    swipeLeftEdgeNode.position.set(-gateX, 0, 0);
+    swipeCorridorGroup.add(swipeLeftEdgeNode);
+
+    const swipeRightEdgeMat = new THREE.MeshBasicMaterial({ color: 0x64748b, transparent: true, opacity: 0.0, side: THREE.DoubleSide });
+    const swipeRightEdgeNode = new THREE.Mesh(new THREE.RingGeometry(0.12, 0.17, 32), swipeRightEdgeMat);
+    swipeRightEdgeNode.position.set(gateX, 0, 0);
+    swipeCorridorGroup.add(swipeRightEdgeNode);
+
+    // Fixed Center Access Point Anchor Ring at X = 0
+    const swipeCenterAnchor = new THREE.Mesh(
+      new THREE.RingGeometry(0.10, 0.14, 32),
+      new THREE.MeshBasicMaterial({ color: 0x0f172a, transparent: true, opacity: 0.0, side: THREE.DoubleSide })
+    );
+    swipeCorridorGroup.add(swipeCenterAnchor);
+
+    // Live Hand Shuttle Ring + Elastic Tether Line from Center (0,0) to Hand X
+    const swipeNeutralTick = new THREE.Mesh(
+      new THREE.RingGeometry(0.15, 0.20, 32),
+      new THREE.MeshBasicMaterial({ color: 0x0ea5e9, transparent: true, opacity: 0.0, side: THREE.DoubleSide })
+    );
+    swipeCorridorGroup.add(swipeNeutralTick);
+
+    const swipeTetherGeom = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, 0, 0)
+    ]);
+    const swipeTetherMat = new THREE.LineBasicMaterial({ color: 0x0ea5e9, transparent: true, opacity: 0.0 });
+    const swipeTetherLine = new THREE.Line(swipeTetherGeom, swipeTetherMat);
+    swipeCorridorGroup.add(swipeTetherLine);
+
+    function forgivingDistanceTo(a, b) {
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      const dz = (a.z - b.z) * 0.25;
+      return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    // 2D-weighted finger touch distance (ignores webcam Z-depth jitter on individual fingertips)
+    function forgivingFingerDist(a, b) {
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      const dz = (a.z - b.z) * 0.12;
+      return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    function createHandRig() {
+      const group = new THREE.Group();
+      scene.add(group);
+
+      const tipNodes = FINGERTIP_CONFIGS.map((cfg) => {
+        const dotMat = new THREE.MeshBasicMaterial({
+          color: 0x94a3b8,
+          transparent: true,
+          opacity: 0.0
+        });
+        const dotMesh = new THREE.Mesh(new THREE.SphereGeometry(0.085, 20, 20), dotMat);
+
+        const haloMat = new THREE.MeshBasicMaterial({
+          color: cfg.hex,
+          transparent: true,
+          opacity: 0.0,
+          side: THREE.DoubleSide
+        });
+        const haloMesh = new THREE.Mesh(new THREE.RingGeometry(0.13, 0.17, 28), haloMat);
+        dotMesh.add(haloMesh);
+        group.add(dotMesh);
+
+        return {
+          cfg,
+          dotMesh,
+          dotMat,
+          haloMesh,
+          haloMat,
+          colorPop: 0.0,
+          isFingerActive: true,
+          activeFactor: 1.0
+        };
+      });
+
+      // Subtle thin lines connecting Thumb ONLY to Pointer [1] and Middle [2]
+      const chordLines = [1, 2].map(() => {
+        const geom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+        const mat = new THREE.LineBasicMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.0 });
+        const line = new THREE.Line(geom, mat);
+        group.add(line);
+        return { line, geom, mat };
+      });
+
+      const filters = Array.from({ length: 21 }, () => new OneEuroFilterVec3(60, 1.45, 0.05));
+      const joints = Array.from({ length: 21 }, () => new THREE.Vector3());
+      const rawLm = Array.from({ length: 21 }, () => ({ x: 0.5, y: 0.5, z: 0.0 }));
+
+      return {
+        group,
+        tipNodes,
+        chordLines,
+        filters,
+        joints,
+        rawLm,
+        active: false,
+        wasActive: false,
+        missingFrames: 0,
+        presenceFactor: 0.0,
+        presenceVel: 0.0,
+        palmCenter: new THREE.Vector3(0, 0.5, 3.0),
+        prevPalmCenter: new THREE.Vector3(0, 0.5, 3.0),
+        palmVelocity: new THREE.Vector3(),
+        peakSwipeSpeedX: 0.0,
+        pinchPoint: new THREE.Vector3(),
+        prevPinchPoint: new THREE.Vector3(),
+        velocity: new THREE.Vector3(),
+        isPinching: false,
+        activePinchSlot: 0, // 0 = none, 1 = Thumb+Pointer, 2 = Thumb+Middle
+        pinchHoldTime: 0.0,
+        gestureMutex: 'NONE',   // 'NONE' | 'SWIPE' | 'CLICK' — Strictly 1 gesture allowed at a time
+        gestureLockTimer: 0.0,  // Global cooldown after ANY gesture so overlapping actions cannot occur
+        flickState: 'READY',    // 'READY' | 'CHARGING' | 'LATCHED_RETURN'
+        flickDir: 0,            // -1 (swipe left) or +1 (swipe right)
+        camHistory: [],         // Ring buffer of { t, x, y } in raw 2D camera space [0..1]
+        windowDx: 0.0,          // Net horizontal travel in camera space over last 145ms
+        windowDy: 0.0,          // Net vertical travel in camera space over last 145ms
+        strokeOriginX: 0.0,
+        strokeTimer: 0.0,
+        prevHandX: 0.0,
+        neutralX: 0.0,
+        neutralDwellTimer: 0.0,
+        flickLockoutTimer: 0.0,
+        visualImpulseX: 0.0,
+        pinchStrength: 0.0,
+        grabbedCard: null,
+        hoveredCard: null,
+        isHoveringInteractable: false,
+        palmFacingCamera: true,
+        inSwipeZone: false,
+        activeFingerCount: 3,
+        fingerTaps: [false, false, false],
+        fingerCooldowns: [0, 0, 0]
+      };
+    }
+
+    handsState.push(createHandRig(), createHandRig());
+
+    // Ambient Standby Radar Pulse Ring when camera is live & waiting for hand
+    const standbyBeaconGroup = new THREE.Group();
+    standbyBeaconGroup.position.set(0, 0.4, 3.5);
+    const standbyRingMat = new THREE.MeshBasicMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.0, side: THREE.DoubleSide });
+    const standbyRingMesh = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.46, 48), standbyRingMat);
+    standbyBeaconGroup.add(standbyRingMesh);
+    scene.add(standbyBeaconGroup);
+
+    /**************************************************************************
+     * 8. WEBCAM & MEDIAPIPE HAND LANDMARKER INITIALIZATION
+     **************************************************************************/
+    const videoEl = document.getElementById('webcam-video');
+    const camHudPreview = document.getElementById('cam-hud-preview');
+    const camHudBody = document.getElementById('cam-hud-body');
+    const btnMinimizeHud = document.getElementById('btn-minimize-hud');
+    const camDebugCanvas = document.getElementById('cam-debug-canvas');
+    const camDebugCtx = camDebugCanvas ? camDebugCanvas.getContext('2d') : null;
+    const camHudDot = document.getElementById('cam-hud-dot');
+    const camHudStatus = document.getElementById('cam-hud-status');
+    const camHudHands = document.getElementById('cam-hud-hands');
+    const camHudGesture = document.getElementById('cam-hud-gesture');
+    const camLClickVal = document.getElementById('cam-lclick-val');
+    const camLClickBar = document.getElementById('cam-lclick-bar');
+    const camRClickVal = document.getElementById('cam-rclick-val');
+    const camRClickBar = document.getElementById('cam-rclick-bar');
+    const camSwipeState = document.getElementById('cam-swipe-state');
+    const camSwipeVel = document.getElementById('cam-swipe-vel');
+    const camSwipeBar = document.getElementById('cam-swipe-bar');
+    const camCoordsReadout = document.getElementById('cam-coords-readout');
+    const pillThumb = document.getElementById(' pill-thumb');
+    const pillPointer = document.getElementById('pill-pointer');
+    const pillMiddle = document.getElementById('pill-middle');
+
+    let isHudMinimized = false;
+    function toggleHudMinimized(e) {
+      if (e) e.stopPropagation();
+      isHudMinimized = !isHudMinimized;
+      if (camHudBody) {
+        camHudBody.classList.toggle('hidden', isHudMinimized);
+      }
+      if (camHudPreview) {
+        camHudPreview.style.width = isHudMinimized ? '250px' : '340px';
+      }
+      if (btnMinimizeHud) {
+        btnMinimizeHud.textContent = isHudMinimized ? 'EXPAND [+]' : 'MINIMIZE [-]';
+      }
+    }
+    if (btnMinimizeHud) {
+      btnMinimizeHud.addEventListener('click', toggleHudMinimized);
+    }
+
+    let visionTasksModulePromise = null;
+    let lastDetectTimestampMs = 0;
+
+    function getVisionTasksModule() {
+      if (!visionTasksModulePromise) {
+        visionTasksModulePromise = import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/+esm");
+      }
+      return visionTasksModulePromise;
+    }
+
+    function withTimeout(promise, ms, label = "Operation") {
+      return Promise.race([
+        promise,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+        )
+      ]);
+    }
+
+    async function loadHandLandmarkerInBackground() {
+      if (handLandmarker || isModelLoading) return;
+      isModelLoading = true;
+      if (camHudStatus) camHudStatus.textContent = "LOADING AI MODEL...";
+      try {
+        showToast("loading hand tracker model...");
+        const { FilesetResolver, HandLandmarker } = await withTimeout(
+          getVisionTasksModule(),
+          12000,
+          "MediaPipe script"
+        );
+        const vision = await withTimeout(
+          FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"),
+          12000,
+          "MediaPipe WASM"
+        );
+        try {
+          handLandmarker = await withTimeout(
+            HandLandmarker.createFromOptions(vision, {
+              baseOptions: {
+                modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+                delegate: "GPU"
+              },
+              runningMode: "VIDEO",
+              numHands: 2,
+              minHandDetectionConfidence: 0.35,
+              minHandPresenceConfidence: 0.35,
+              minTrackingConfidence: 0.35
+            }),
+            14000,
+            "HandLandmarker GPU"
+          );
+        } catch (gpuErr) {
+          handLandmarker = await withTimeout(
+            HandLandmarker.createFromOptions(vision, {
+              baseOptions: {
+                modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
+              },
+              runningMode: "VIDEO",
+              numHands: 2,
+              minHandDetectionConfidence: 0.35,
+              minHandPresenceConfidence: 0.35,
+              minTrackingConfidence: 0.35
+            }),
+            14000,
+            "HandLandmarker CPU"
+          );
+        }
+        isModelLoading = false;
+        if (camHudStatus) camHudStatus.textContent = webcamActive ? "TRACKING ACTIVE (60FPS)" : "AI READY · CLICK FOR CAM";
+        if (camHudDot && webcamActive) {
+          camHudDot.className = "w-2 h-2 rounded-full bg-emerald-500";
+        }
+        showToast("hand tracker online // show open hand to camera");
+        if (webcamActive) {
+          redrawCockpitZoneHeaders("OPTICAL HAND TRACKER ONLINE", "#10b981");
+        }
+      } catch (modelErr) {
+        isModelLoading = false;
+        if (camHudStatus) camHudStatus.textContent = "MODEL RETRYING...";
+        showToast("tracker load error // retrying...");
+      }
+    }
+
+    // Pre-warm MediaPipe WASM & HandLandmarker immediately on page load so it's ready as soon as camera starts
+    loadHandLandmarkerInBackground();
+
+    let isRequestingCamera = false;
+
+    async function toggleWebcam() {
+      synth.init();
+      if (isRequestingCamera) return;
+
+      if (webcamActive) {
+        if (videoEl.srcObject) {
+          videoEl.srcObject.getTracks().forEach(t => t.stop());
+          videoEl.srcObject = null;
+        }
+        webcamActive = false;
+        if (camHudStatus) camHudStatus.textContent = "CAMERA PAUSED · SIM MODE";
+        showToast("camera disabled // step 01 required");
+        startTutorialMode();
+        return;
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showToast("camera API unavailable // simulation mode enabled");
+        if (tutorialState.active && tutorialState.stepIndex === 0) {
+          advanceTutorialStep();
+        }
+        return;
+      }
+
+      try {
+        isRequestingCamera = true;
+        if (camHudPreview) camHudPreview.style.opacity = '1';
+        if (camHudStatus) camHudStatus.textContent = "ALLOW CAMERA PROMPT...";
+        showToast("requesting browser camera permission...");
+        redrawCockpitZoneHeaders("ALLOW CAMERA PERMISSION IN BROWSER...", "#0ea5e9");
+        if (tutorialState.active && tutorialState.stepIndex === 0) {
+          tutorialSteps[0].subtitle = "Waiting for browser camera permission prompt...";
+          drawTutorialCard(0, 0.35, true);
+        }
+
+        // Request webcam stream immediately within the user gesture
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+            audio: false
+          });
+        } catch (constraintErr) {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }
+
+        videoEl.srcObject = stream;
+        await new Promise((resolve) => {
+          let resolved = false;
+          const done = () => {
+            if (!resolved) {
+              resolved = true;
+              resolve();
+            }
+          };
+          videoEl.onloadedmetadata = () => {
+            videoEl.play().then(done).catch(done);
+          };
+          setTimeout(done, 800);
+        });
+        videoEl.play().catch(() => {});
+
+        webcamActive = true;
+        isRequestingCamera = false;
+
+        if (camHudStatus) {
+          camHudStatus.textContent = handLandmarker ? "TRACKING ACTIVE (60FPS)" : "LOADING AI TRACKER...";
+        }
+        if (camHudDot && handLandmarker) {
+          camHudDot.className = "w-2 h-2 rounded-full bg-emerald-500";
+        }
+
+        synth.playHandPresenceCue(true);
+        showToast("camera stream live // show hand to sensor");
+
+        // Advance immediately out of Step 01 as soon as camera stream is granted!
+        if (tutorialState.active && tutorialState.stepIndex === 0) {
+          advanceTutorialStep();
+        } else {
+          redrawCockpitZoneHeaders("OPTICAL SENSOR LIVE", "#10b981");
+        }
+
+        // Ensure MediaPipe HandLandmarker is loaded or loading
+        loadHandLandmarkerInBackground();
+      } catch (err) {
+        isRequestingCamera = false;
+        const errMsg = err && err.name ? err.name : "PermissionDenied";
+        if (camHudStatus) camHudStatus.textContent = `BLOCKED: ${errMsg}`;
+        showToast(`camera ${errMsg} // press [1] or click again`);
+        redrawCockpitZoneHeaders(`CAMERA BLOCKED (${errMsg}) · PRESS [1] TO CONTINUE`, "#ef4444");
+        if (tutorialState.active && tutorialState.stepIndex === 0) {
+          tutorialSteps[0].subtitle = `Camera blocked (${errMsg}) — Press [1] to continue in Simulation Mode`;
+          drawTutorialCard(0, 0, false);
+        }
+      }
+    }
+
+    function processWebcamFrame(now) {
+      if (!webcamActive) return;
+
+      // Keep video playing if browser momentarily paused it
+      if (videoEl.paused && videoEl.srcObject) {
+        videoEl.play().catch(() => {});
+      }
+
+      if (videoEl.readyState < 2 || videoEl.videoWidth === 0) return;
+
+      // Skip heavy GPU/CPU inference & canvas drawing if the camera video frame hasn't changed yet
+      const curVideoTime = videoEl.currentTime;
+      if (curVideoTime === lastVideoTime && (now - lastDetectTimestampMs) < 42) {
+        return;
+      }
+      lastVideoTime = curVideoTime;
+
+      if (!handLandmarker) {
+        if (!isModelLoading) loadHandLandmarkerInBackground();
+        return;
+      }
+
+      // Guarantee strictly increasing integer timestamp for MediaPipe detectForVideo
+      const timestampMs = Math.max(lastDetectTimestampMs + 1, Math.floor(now));
+      lastDetectTimestampMs = timestampMs;
+
+      let results = null;
+      try {
+        results = handLandmarker.detectForVideo(videoEl, timestampMs);
+      } catch (detectErr) {
+        return;
+      }
+
+      const detectedCount = (results && results.landmarks) ? results.landmarks.length : 0;
+      if (camHudHands) {
+        const nextText = detectedCount > 0 ? `HANDS LOCKED: ${detectedCount}` : `NO HAND IN VIEW`;
+        if (camHudHands.textContent !== nextText) {
+          camHudHands.textContent = nextText;
+          camHudHands.className = detectedCount > 0 ? "text-emerald-600 font-semibold mt-0.5" : "text-amber-600 font-medium mt-0.5";
+        }
+      }
+
+      // Throttle bottom-left diagnostic mini-monitor redraw to ~20fps to save 2D canvas bandwidth
+      if (camDebugCtx && (timestampMs % 2 === 0)) {
+        const cw = camDebugCanvas.width;
+        const ch = camDebugCanvas.height;
+        camDebugCtx.save();
+        camDebugCtx.translate(cw, 0);
+        camDebugCtx.scale(-1, 1);
+        camDebugCtx.drawImage(videoEl, 0, 0, cw, ch);
+        camDebugCtx.restore();
+
+        if (results && results.landmarks) {
+          results.landmarks.forEach((lm) => {
+            camDebugCtx.fillStyle = '#22c55e';
+            // Only draw Wrist (0) and Thumb (1-4), Pointer (5-8), and Middle (9-12) on the sensor preview
+            for (let j = 0; j <= 12; j++) {
+              const px = (1.0 - lm[j].x) * cw;
+              const py = lm[j].y * ch;
+              camDebugCtx.beginPath();
+              camDebugCtx.arc(px, py, j % 4 === 0 ? 3.2 : 1.8, 0, Math.PI * 2);
+              camDebugCtx.fill();
+            }
+          });
+        }
+      }
+
+      for (let hIdx = 0; hIdx < 2; hIdx++) {
+        const hand = handsState[hIdx];
+        if (hIdx < detectedCount) {
+          const lm = results.landmarks[hIdx];
+          hand.missingFrames = 0;
+          if (!hand.active) {
+            hand.active = true;
+            synth.playHandPresenceCue(true);
+            showToast(`hand 0${hIdx + 1} acquired`);
+          }
+
+          // Store 2D normalized camera landmarks (x,y in [0..1]) with zero per-joint Vector3 allocations
+          const palmZ = (lm[0].z + lm[5].z + lm[17].z) / 3.0;
+          for (let j = 0; j < 21; j++) {
+            hand.rawLm[j].x = lm[j].x;
+            hand.rawLm[j].y = lm[j].y;
+            hand.rawLm[j].z = lm[j].z;
+
+            const rawX = (0.5 - lm[j].x) * 14.0;
+            const rawY = (0.5 - lm[j].y) * 9.0 + 1.15;
+            const rawZ = 2.6 - THREE.MathUtils.clamp(palmZ * 6.0 + (lm[j].z - palmZ) * 1.8, -2.2, 2.2);
+            if (useOneEuroFilter) {
+              hand.filters[j].filterTo(rawX, rawY, rawZ, timestampMs, hand.joints[j]);
+            } else {
+              hand.joints[j].set(rawX, rawY, rawZ);
+            }
+          }
+        } else {
+          hand.missingFrames++;
+          if (hand.active && hand.missingFrames > 14) {
+            hand.active = false;
+            synth.playHandPresenceCue(false);
+            showToast(`hand 0${hIdx + 1} lost // standby`);
+          }
+        }
+      }
+    }
+
+    /**************************************************************************
+     * 9. SPATIAL PHYSICS, MULTI-FINGER CHORDS & PRESENCE ANIMATION
+     **************************************************************************/
+    const mouseSim = {
+      ndcX: 0,
+      ndcY: 0,
+      isDown: false,
+      isFivePinchSim: false,
+      simulatedTapSlot: 0,
+      simulatedTapTimer: 0
+    };
+
+    // Pre-allocated scratch vectors to avoid per-frame garbage collection stalls
+    const _scratchVecA = new THREE.Vector3();
+    const _scratchVecB = new THREE.Vector3();
+    const _scratchVecC = new THREE.Vector3();
+    const _simOffsets = [
+      new THREE.Vector3(-0.20, -0.14, 0), // Thumb
+      new THREE.Vector3(-0.04,  0.20, 0), // Pointer
+      new THREE.Vector3( 0.14,  0.22, 0)  // Middle
+    ];
+
+    function updateSpatialPhysics(dt, timeSec) {
+      // Desktop Mouse / Fallback Simulator when Webcam is off or Model is loading
+      if (!webcamActive || !handLandmarker) {
+        const simHand = handsState[0];
+        if (!tutorialState.active || tutorialState.stepIndex > 0) {
+          simHand.active = true;
+          const baseX = mouseSim.ndcX * 7.5;
+          const baseY = mouseSim.ndcY * 4.5 + 1.2;
+          const baseZ = 1.6;
+
+          // Keep rawLm synchronized in mouse simulation mode so the 2D sliding-window swipe works with mouse too
+          const simCamX = 0.5 - mouseSim.ndcX * 0.42;
+          const simCamY = 0.5 - mouseSim.ndcY * 0.42;
+          simHand.rawLm[0].x = simCamX; simHand.rawLm[0].y = simCamY + 0.08;
+          simHand.rawLm[5].x = simCamX + 0.03; simHand.rawLm[5].y = simCamY;
+          simHand.rawLm[9].x = simCamX; simHand.rawLm[9].y = simCamY;
+
+          simHand.joints[0].set(baseX, baseY - 0.65, baseZ);
+          simHand.joints[5].set(baseX - 0.12, baseY - 0.08, baseZ);
+          simHand.joints[9].set(baseX, baseY, baseZ);
+          simHand.joints[17].set(baseX + 0.16, baseY - 0.10, baseZ);
+
+          // Mouse down simulates Thumb + Pointer pinch; [1] or [2] simulates Thumb+Pointer or Thumb+Middle
+          const pointerPinchSim = mouseSim.isDown || mouseSim.simulatedTapSlot === 1;
+          const middlePinchSim = mouseSim.simulatedTapSlot === 2;
+
+          FINGERTIP_CONFIGS.forEach((cfg, idx) => {
+            _scratchVecB.set(baseX, baseY, baseZ).add(_simOffsets[idx]);
+            if (idx === 1 && pointerPinchSim) {
+              _scratchVecB.copy(simHand.joints[4]).addScalar(0.02);
+            } else if (idx === 2 && middlePinchSim) {
+              _scratchVecB.copy(simHand.joints[4]).addScalar(0.02);
+            }
+            simHand.joints[cfg.idx].lerp(_scratchVecB, dt * 18.0);
+            _scratchVecC.set(baseX, baseY - 0.12, baseZ).addScaledVector(_simOffsets[idx], 0.55);
+            simHand.joints[cfg.pipIdx].lerp(_scratchVecC, dt * 18.0);
+          });
+        } else {
+          simHand.active = false;
+        }
+      }
+
+      if (mouseSim.simulatedTapTimer > 0) {
+        mouseSim.simulatedTapTimer = Math.max(0, mouseSim.simulatedTapTimer - dt);
+        if (mouseSim.simulatedTapTimer <= 0) mouseSim.simulatedTapSlot = 0;
+      }
+
+      // Reset hover states
+      hudCards.forEach(c => { c.isHovered = false; });
+      backScreenCards.forEach(sc => { sc.isHovered = false; });
+      screenBays.forEach(b => {
+        b.isHighlighted = false;
+        b.frameMat.color.setHex(b.isCenter ? 0x64748b : 0x94a3b8);
+        b.frameMat.opacity = backScreenCards.some(sc => sc.bayIdx === b.bayIdx) ? 0.05 : (b.isCenter ? 0.42 : 0.24);
+      });
+
+      handsState.forEach((hand) => {
+        // Smooth 2-State Presence Bloom-In & Drift-Out Animation
+        const targetPresence = hand.active ? 1.0 : 0.0;
+        const pForce = (targetPresence - hand.presenceFactor) * 120.0;
+        hand.presenceVel = (hand.presenceVel + pForce * dt) * Math.pow(0.78, dt * 60);
+        hand.presenceFactor = THREE.MathUtils.clamp(hand.presenceFactor + hand.presenceVel * dt, 0.0, 1.15);
+
+        if (hand.presenceFactor < 0.01) {
+          hand.group.visible = false;
+          if (hand.grabbedCard) {
+            hand.grabbedCard.isGrabbed = false;
+            hand.grabbedCard = null;
+          }
+          if (hand.grabbedScreen) {
+            hand.grabbedScreen.isGrabbed = false;
+            hand.grabbedScreen = null;
+          }
+          hand.isPinching = false;
+          hand.activePinchSlot = 0;
+          hand.gestureMutex = 'NONE';
+          hand.gestureLockTimer = 0.0;
+          hand.flickState = 'READY';
+          carouselState.isTurning = false;
+          return;
+        }
+        hand.group.visible = true;
+
+        const thumbPos = hand.joints[4];
+        const indexPos = hand.joints[8];
+        const middlePos = hand.joints[12];
+        const wristPos = hand.joints[0];
+
+        // Track smooth, dedicated palm center and palm velocity with zero per-frame Vector3 allocations
+        hand.prevPalmCenter.copy(hand.palmCenter);
+        _scratchVecA.copy(hand.joints[0])
+          .add(hand.joints[5])
+          .add(hand.joints[9])
+          .multiplyScalar(1 / 3);
+        hand.palmCenter.lerp(_scratchVecA, Math.min(1.0, dt * 22.0));
+
+        _scratchVecB.subVectors(hand.palmCenter, hand.prevPalmCenter).divideScalar(Math.max(0.001, dt));
+        hand.palmVelocity.lerp(_scratchVecB, Math.min(1.0, dt * 16.0));
+
+        // Foreshortening-proof palm scale from Wrist to Middle MCP
+        const wristToMidMcp = forgivingFingerDist(wristPos, hand.joints[9]);
+        const knuckleSpan = forgivingFingerDist(hand.joints[5], hand.joints[9]) * 2.4;
+        const palmSize = Math.max(0.32, Math.max(wristToMidMcp, knuckleSpan));
+
+        // Update pinchPoint & evaluate per-finger extension + thumb-to-finger proximity ratios
+        hand.prevPinchPoint.copy(hand.pinchPoint);
+        hand.pinchPoint.copy(indexPos).add(thumbPos).multiplyScalar(0.5);
+        hand.velocity.subVectors(hand.pinchPoint, hand.prevPinchPoint).divideScalar(Math.max(0.001, dt));
+
+        const rawPalmSpan2D = Math.max(
+          0.045,
+          Math.hypot(hand.rawLm[0].x - hand.rawLm[9].x, hand.rawLm[0].y - hand.rawLm[9].y)
+        );
+
+        let ratioPointer = 999;
+        let ratioMiddle = 999;
+        if (!hand.FingerRatios) hand.FingerRatios = [999, 999, 999];
+
+        hand.tipNodes.forEach((node, idx) => {
+          const tipPos = hand.joints[node.cfg.idx];
+          const pipPos = hand.joints[node.cfg.pipIdx];
+          const tipToWrist = forgivingFingerDist(tipPos, wristPos);
+          const pipToWrist = forgivingFingerDist(pipPos, wristPos);
+
+          let ratio = 999;
+          if (idx >= 1) {
+            const dist3D = forgivingFingerDist(tipPos, thumbPos) / palmSize;
+            const dist2D = webcamActive
+              ? Math.hypot(hand.rawLm[node.cfg.idx].x - hand.rawLm[4].x, hand.rawLm[node.cfg.idx].y - hand.rawLm[4].y) / rawPalmSpan2D
+              : dist3D;
+            const reachMult = idx === 2 ? 0.88 : 1.0; // Middle finger gets a reach bonus
+            ratio = Math.min(dist3D, dist2D * 1.15) * reachMult;
+            hand.FingerRatios[idx] = ratio;
+            if (idx === 1) ratioPointer = ratio;
+            if (idx === 2) ratioMiddle = ratio;
+          }
+
+          const isExtended = (tipToWrist >= pipToWrist * 0.92) || (ratio < TOLERANCE.FINGER_TAP_RELEASE * 1.25);
+          node.isFingerActive = isExtended;
+          node.activeFactor = THREE.MathUtils.lerp(node.activeFactor, isExtended ? 1.0 : 0.15, dt * 14.0);
+        });
+
+        // Check if hand is inside the central swipe zone
+        hand.inSwipeZone =
+          Math.abs(hand.palmCenter.x) <= TOLERANCE.SWIPE_ZONE_X &&
+          hand.palmCenter.y >= TOLERANCE.SWIPE_ZONE_Y_MIN &&
+          hand.palmCenter.y <= TOLERANCE.SWIPE_ZONE_Y_MAX;
+        hand.palmFacingCamera = true;
+
+        // =====================================================================
+        // REDESIGNED 2D CAMERA-SPACE SLIDING-WINDOW TRAJECTORY TRACKER
+        // Uses the ultra-stable Wrist (0) + Index MCP (5) + Middle MCP (9) anchor
+        // directly in normalized [0..1] camera space over a 145ms sliding window.
+        // Completely immune to single-frame derivative spikes, 3D depth jitter,
+        // and finger flexing!
+        // =====================================================================
+        const nowMs = timeSec * 1000.0;
+        // Mirrored camera X so moving hand RIGHT in real life increases camX (+1 = Right, -1 = Left)
+        const camAnchorX = 1.0 - (hand.rawLm[0].x * 0.5 + hand.rawLm[5].x * 0.25 + hand.rawLm[9].x * 0.25);
+        const camAnchorY = (hand.rawLm[0].y * 0.5 + hand.rawLm[5].y * 0.25 + hand.rawLm[9].y * 0.25);
+
+        hand.camHistory.push({ t: nowMs, x: camAnchorX, y: camAnchorY });
+        while (hand.camHistory.length > 2 && (nowMs - hand.camHistory[0].t) > TOLERANCE.SWIPE_WINDOW_MS) {
+          hand.camHistory.shift();
+        }
+
+        const oldestSample = hand.camHistory[0] || { t: nowMs, x: camAnchorX, y: camAnchorY };
+        const windowDx = camAnchorX - oldestSample.x; // + = moving right, - = moving left
+        const windowDy = camAnchorY - oldestSample.y;
+        const absWindowDx = Math.abs(windowDx);
+        const absWindowDy = Math.abs(windowDy);
+        const isHorizontalDominant = absWindowDx > (absWindowDy * TOLERANCE.SWIPE_HORIZ_RATIO);
+        const dirSign = windowDx >= 0 ? 1 : -1;
+
+        hand.windowDx = windowDx;
+        hand.windowDy = windowDy;
+
+        // Legacy 3D velocity kept only for subtle visual momentum
+        const handX = hand.palmCenter.x;
+        const prevX = hand.prevHandX !== undefined ? hand.prevHandX : handX;
+        hand.prevHandX = handX;
+        const speedX = (handX - prevX) / Math.max(0.001, dt);
+        const absSpeedX = Math.abs(speedX);
+
+        // Evaluate 3D hover against Orbs, Back Screens, and Tutorial Target Shapes
+        let hoveredInteractable = false;
+        let closestCard = null;
+        let minCardDist = TOLERANCE.ORB_HOVER_RADIUS;
+
+        if (!tutorialState.active) {
+          // Suppress orb hover highlighting while actively executing a swipe so actions never overlap
+          if (hand.gestureMutex !== 'SWIPE') {
+            hudCards.forEach((card) => {
+              if (!card.mesh.visible) return;
+              const d = forgivingDistanceTo(hand.pinchPoint, card.mesh.position);
+              if (d < minCardDist) {
+                minCardDist = d;
+                closestCard = card;
+              }
+            });
+          }
+          if (closestCard) {
+            closestCard.isHovered = true;
+            hoveredInteractable = true;
+            if (hand.hoveredCard !== closestCard) {
+              synth.playHoverChirp();
+              hand.hoveredCard = closestCard;
+            }
+          } else {
+            hand.hoveredCard = null;
+          }
+        } else if (transitionState.phase === 'NONE') {
+          const tutDist = forgivingDistanceTo(hand.pinchPoint, tutShapeAnchor.position);
+          if (tutDist < TOLERANCE.TUT_HOVER_RADIUS) {
+            hoveredInteractable = true;
+          }
+          if (tutorialState.stepIndex === 1) {
+            const allThreeActive = hand.tipNodes.every(n => n.isFingerActive);
+            if (allThreeActive) {
+              tutorialState.progressHold += dt;
+              drawTutorialCard(1, tutorialState.progressHold / 1.0, true);
+              if (tutorialState.progressHold >= 1.0) {
+                advanceTutorialStep();
+              }
+            } else {
+              tutorialState.progressHold = Math.max(0, tutorialState.progressHold - dt * 0.5);
+              drawTutorialCard(1, tutorialState.progressHold / 1.0, false);
+            }
+          }
+        }
+
+        let closestScreen = null;
+        let minScreenDist = 2.8;
+        if (!tutorialState.active && screenWallGroup.visible && hand.gestureMutex !== 'SWIPE') {
+          backScreenCards.forEach((sc) => {
+            const d = forgivingDistanceTo(hand.pinchPoint, sc.worldCenter);
+            if (d < minScreenDist) {
+              minScreenDist = d;
+              closestScreen = sc;
+            }
+          });
+          if (closestScreen) {
+            closestScreen.isHovered = true;
+            hoveredInteractable = true;
+          }
+        }
+
+        // =====================================================================
+        // SINGLE-GESTURE MUTEX ARBITRATOR (`hand.gestureMutex`)
+        // Strictly enforces that ONLY ONE gesture can happen at a time:
+        // - If hand is moving fast (`absSpeedX > 1.85 m/s`) or in a swipe burst,
+        //   finger pinches/clicks are completely locked out (`SWIPE` owns mutex).
+        // - If a finger click is engaged (or fingers are closing in while hand is
+        //   steady), swipe detection is completely locked out (`CLICK` owns mutex).
+        // - After any gesture completes, `gestureLockTimer` prevents immediate
+        //   chained/accidental secondary triggers.
+        // =====================================================================
+        hand.gestureLockTimer = Math.max(0, hand.gestureLockTimer - dt);
+        hand.flickLockoutTimer = Math.max(0, hand.flickLockoutTimer - dt);
+        hand.visualImpulseX *= Math.pow(0.82, dt * 60);
+
+        for (let s = 1; s <= 2; s++) {
+          hand.fingerCooldowns[s] = Math.max(0, hand.fingerCooldowns[s] - dt);
+        }
+
+        const isFingerApproachingPinch = Math.min(ratioPointer, ratioMiddle) < (TOLERANCE.FINGER_TAP_ENGAGE * 1.12);
+
+        // 1. Evaluate CLICK Path (Only allowed when hand is NOT making a horizontal swipe!)
+        const isHandSteadyForClick = absWindowDx < (TOLERANCE.SWIPE_MIN_CAM_DX * 0.52);
+        const canEvaluateClick =
+          hand.gestureMutex !== 'SWIPE' &&
+          hand.flickState === 'READY' &&
+          isHandSteadyForClick &&
+          hand.gestureLockTimer <= 0;
+
+        if (!hand.isPinching) {
+          if (canEvaluateClick) {
+            const pReady = ratioPointer <= TOLERANCE.FINGER_TAP_ENGAGE && hand.fingerCooldowns[1] <= 0;
+            const mReady = ratioMiddle <= TOLERANCE.FINGER_TAP_ENGAGE && hand.fingerCooldowns[2] <= 0;
+
+            if (pReady || mReady) {
+              // Strictly pick ONLY ONE finger slot (strongest/closest ratio wins)
+              const chosenSlot = (pReady && mReady) ? (ratioPointer <= ratioMiddle ? 1 : 2) : (pReady ? 1 : 2);
+              hand.gestureMutex = 'CLICK';
+              hand.isPinching = true;
+              hand.activePinchSlot = chosenSlot;
+              hand.pinchHoldTime = 0.0;
+              hand.fingerTaps[1] = (chosenSlot === 1);
+              hand.fingerTaps[2] = (chosenSlot === 2);
+              hand.fingerCooldowns[1] = 0.40;
+              hand.fingerCooldowns[2] = 0.40;
+              hand.gestureLockTimer = 0.38; // Lock out any other gesture right after click
+              // Flush camera trajectory history so a click never bleeds into a swipe
+              hand.flickState = 'READY';
+              hand.camHistory.length = 0;
+              hand.windowDx = 0.0;
+              triggerFingerChordAction(chosenSlot, closestCard);
+            }
+          }
+        } else {
+          hand.pinchHoldTime += dt;
+          const activeRatio = hand.activePinchSlot === 1 ? ratioPointer : ratioMiddle;
+          if (activeRatio > TOLERANCE.FINGER_TAP_RELEASE) {
+            hand.isPinching = false;
+            hand.fingerTaps[1] = false;
+            hand.fingerTaps[2] = false;
+            hand.activePinchSlot = 0;
+            hand.pinchHoldTime = 0.0;
+            hand.gestureLockTimer = 0.25; // Brief settle cooldown after releasing a pinch
+            hand.camHistory.length = 0;
+            if (hand.gestureMutex === 'CLICK') {
+              hand.gestureMutex = 'NONE';
+            }
+          }
+        }
+
+        // =====================================================================
+        // 2. REDESIGNED SLIDING-WINDOW TRAJECTORY SWIPE DETECTOR
+        // - Measures clean 2D camera displacement (`windowDx`) over 145ms.
+        // - Enforces horizontal dominance (`|dx| > |dy| * 1.45`) so raising or
+        //   lowering your hand never triggers a false swipe.
+        // - Uses `LATCHED_RETURN` after firing: ignores all reverse motion while
+        //   bringing your hand back, and only re-arms when hand settles (`|dx| < 2.8%`).
+        // =====================================================================
+        const canPalmSwipe =
+          !tutorialState.active &&
+          hand.gestureMutex !== 'CLICK' &&
+          !hand.isPinching &&
+          !isFingerApproachingPinch &&
+          !hand.grabbedScreen &&
+          hand.inSwipeZone;
+
+        const swipeProgressRatio = THREE.MathUtils.clamp(absWindowDx / TOLERANCE.SWIPE_MIN_CAM_DX, 0.0, 1.5);
+
+        if (!tutorialState.active && hand.gestureMutex !== 'CLICK' && !hand.isPinching) {
+          if (hand.flickState === 'LATCHED_RETURN') {
+            // Keep locked in LATCHED_RETURN while hand is moving back in the opposite direction
+            // or until hand movement settles below 2.8% over the 145ms window
+            const isSettled = absWindowDx < 0.028 && hand.flickLockoutTimer <= 0;
+            const isSameDirRepeat = (dirSign === hand.flickDir) && hand.flickLockoutTimer <= 0 && absWindowDx < 0.045;
+            if (isSettled || isSameDirRepeat) {
+              hand.flickState = 'READY';
+              hand.gestureMutex = 'NONE';
+              hand.camHistory.length = 0;
+            }
+          }
+
+          if (hand.flickState === 'READY' || hand.flickState === 'CHARGING') {
+            if (!canPalmSwipe || hand.gestureLockTimer > 0) {
+              hand.flickState = 'READY';
+              if (hand.gestureMutex === 'SWIPE') hand.gestureMutex = 'NONE';
+            } else if (absWindowDx >= TOLERANCE.SWIPE_MIN_CAM_DX * 0.42 && isHorizontalDominant) {
+              // Hand is building horizontal momentum -> lock out clicks and show live shuttle charge
+              hand.flickState = 'CHARGING';
+              hand.gestureMutex = 'SWIPE';
+
+              if (absWindowDx >= TOLERANCE.SWIPE_MIN_CAM_DX) {
+                // SWIPE COMMITTED!
+                const dir = dirSign;
+                const isMultiSpin = absWindowDx >= TOLERANCE.SWIPE_FAST_SPIN_DX;
+
+                hand.flickState = 'LATCHED_RETURN';
+                hand.flickDir = dir;
+                hand.gestureMutex = 'SWIPE';
+                hand.flickLockoutTimer = 0.36; // Prevents return-stroke back to center from firing
+                hand.gestureLockTimer = 0.36;  // Prevents accidental click right after swipe
+                hand.visualImpulseX = dir * TOLERANCE.SWIPE_AXIS_GATE_X;
+                hand.camHistory.length = 0;
+                hoveredInteractable = true;
+
+                if (pf.engaged) {
+                  pfMoveCursor(dir > 0 ? 1 : -1);
+                  synth.playReleaseThrow(1.2);
+                } else {
+                  const curIdx = Math.max(0, hudCards.findIndex(c => c.id === selectedCardId));
+                  const stepCount = isMultiSpin ? 2 : 1;
+                  const nextIdx = (curIdx - dir * stepCount + hudCards.length * 4) % hudCards.length;
+                  snapWheelToOrbIndex(nextIdx);
+                  synth.playReleaseThrow(isMultiSpin ? 2.4 : 1.5);
+
+                  const pctStr = Math.round(absWindowDx * 100);
+                  redrawCockpitZoneHeaders(
+                    `SWIPE ${dir > 0 ? 'RIGHT' : 'LEFT'} (${pctStr}% ARC) // ORB 0${nextIdx + 1}`,
+                    "#22c55e"
+                  );
+                  showToast(`swipe ${dir > 0 ? 'right' : 'left'} -> Orb 0${nextIdx + 1}`);
+                }
+              }
+            } else {
+              hand.flickState = 'READY';
+              if (hand.gestureMutex === 'SWIPE') hand.gestureMutex = 'NONE';
+            }
+          }
+        }
+
+        const isFastEnough = swipeProgressRatio >= 1.0 && isHorizontalDominant;
+        const velRatio = THREE.MathUtils.clamp(swipeProgressRatio, 0.0, 1.0);
+        const activeStrokeDelta = hand.flickState === 'CHARGING'
+          ? THREE.MathUtils.clamp(windowDx / TOLERANCE.SWIPE_MIN_CAM_DX, -1.0, 1.0) * TOLERANCE.SWIPE_AXIS_GATE_X
+          : hand.visualImpulseX;
+
+        if (hand === handsState[0]) {
+          const showCorridor = !tutorialState.active && hand.active && hand.inSwipeZone;
+          const isArmed = hand.flickState !== 'LATCHED_RETURN';
+          const shuttleColor = isArmed
+            ? (hand.flickState === 'CHARGING' ? 0x22c55e : 0x0ea5e9)
+            : 0xf59e0b;
+
+          swipeCorridorMat.opacity = THREE.MathUtils.lerp(swipeCorridorMat.opacity, showCorridor ? 0.34 : 0.0, dt * 10.0);
+          swipeAxisMat.opacity = THREE.MathUtils.lerp(swipeAxisMat.opacity, showCorridor ? 0.45 : 0.0, dt * 10.0);
+          swipeGatesMat.opacity = THREE.MathUtils.lerp(swipeGatesMat.opacity, showCorridor ? 0.65 : 0.0, dt * 10.0);
+          swipeCenterAnchor.material.opacity = THREE.MathUtils.lerp(swipeCenterAnchor.material.opacity, showCorridor ? 0.75 : 0.0, dt * 10.0);
+          swipeCenterAnchor.material.color.setHex(isArmed ? 0x0f172a : 0xf59e0b);
+
+          // Live Arc Displacement Gauge Bar above the scroll bar axis
+          velMeterBgMat.opacity = THREE.MathUtils.lerp(velMeterBgMat.opacity, showCorridor ? 0.40 : 0.0, dt * 10.0);
+          velThreshMat.opacity = THREE.MathUtils.lerp(velThreshMat.opacity, showCorridor ? 0.75 : 0.0, dt * 10.0);
+          swipeVelBarMat.opacity = THREE.MathUtils.lerp(swipeVelBarMat.opacity, showCorridor ? 0.92 : 0.0, dt * 10.0);
+          swipeVelBarMat.color.setHex(hand.flickState === 'CHARGING' ? 0x22c55e : 0x0ea5e9);
+
+          const vArr = swipeVelBarGeom.attributes.position.array;
+          vArr[0] = 0; vArr[1] = 0.38; vArr[2] = 0;
+          vArr[3] = dirSign * velRatio * TOLERANCE.SWIPE_AXIS_GATE_X; vArr[4] = 0.38; vArr[5] = 0;
+          swipeVelBarGeom.attributes.position.needsUpdate = true;
+
+          // Highlight Left/Right Target Rings based on 2D camera arc progress
+          const leftBurst = activeStrokeDelta < 0 ? Math.abs(activeStrokeDelta) / TOLERANCE.SWIPE_AXIS_GATE_X : 0.0;
+          const rightBurst = activeStrokeDelta > 0 ? Math.abs(activeStrokeDelta) / TOLERANCE.SWIPE_AXIS_GATE_X : 0.0;
+          swipeLeftEdgeMat.opacity = THREE.MathUtils.lerp(swipeLeftEdgeMat.opacity, showCorridor ? (0.35 + leftBurst * 0.65) : 0.0, dt * 12.0);
+          swipeLeftEdgeMat.color.setHex(leftBurst > 0.5 ? 0x22c55e : 0x0ea5e9);
+          swipeLeftEdgeNode.scale.setScalar(1.0 + leftBurst * 0.32);
+
+          swipeRightEdgeMat.opacity = THREE.MathUtils.lerp(swipeRightEdgeMat.opacity, showCorridor ? (0.35 + rightBurst * 0.65) : 0.0, dt * 12.0);
+          swipeRightEdgeMat.color.setHex(rightBurst > 0.5 ? 0x22c55e : 0x0ea5e9);
+          swipeRightEdgeNode.scale.setScalar(1.0 + rightBurst * 0.32);
+
+          // Shuttle stays at 0 when steady, and pulls smoothly toward the gate during a horizontal stroke
+          swipeNeutralTick.material.opacity = THREE.MathUtils.lerp(swipeNeutralTick.material.opacity, showCorridor ? 0.88 : 0.0, dt * 10.0);
+          swipeNeutralTick.position.x = activeStrokeDelta;
+          swipeNeutralTick.material.color.setHex(shuttleColor);
+
+          const tArr = swipeTetherGeom.attributes.position.array;
+          tArr[0] = 0; tArr[1] = 0; tArr[2] = 0;
+          tArr[3] = activeStrokeDelta; tArr[4] = 0; tArr[5] = 0;
+          swipeTetherGeom.attributes.position.needsUpdate = true;
+          swipeTetherMat.color.setHex(shuttleColor);
+          swipeTetherMat.opacity = THREE.MathUtils.lerp(swipeTetherMat.opacity, showCorridor ? 0.72 : 0.0, dt * 10.0);
+        }
+
+        const anyChordActive = hand.isPinching || hand.fingerTaps[1] || hand.fingerTaps[2];
+        const showColorPop = hoveredInteractable || anyChordActive;
+        hand.isHoveringInteractable = showColorPop;
+
+        // Render ONLY the 3 Tracked Fingertips: Thumb (0), Pointer (1), Middle (2)
+        hand.tipNodes.forEach((node, idx) => {
+          const jointPos = hand.joints[node.cfg.idx];
+          const reachFactor = Math.min(1.0, hand.presenceFactor) * (0.25 + 0.75 * node.activeFactor);
+          node.dotMesh.position.lerpVectors(hand.palmCenter, jointPos, reachFactor);
+
+          const curRatio = (hand.FingerRatios && hand.FingerRatios[idx]) ? hand.FingerRatios[idx] : 999;
+          const thumbProx = (idx >= 1 && node.activeFactor > 0.2)
+            ? THREE.MathUtils.clamp(1.0 - (curRatio - TOLERANCE.FINGER_TAP_ENGAGE * 0.85) / 0.45, 0.0, 0.75)
+            : 0.0;
+
+          const isThisFingerActive =
+            (idx === 0 && (showColorPop || thumbProx > 0.2)) ||
+            (idx === 1 && (hoveredInteractable || hand.activePinchSlot === 1)) ||
+            (idx === 2 && hand.activePinchSlot === 2);
+
+          const targetPop = isThisFingerActive ? 1.0 : thumbProx;
+          node.colorPop = THREE.MathUtils.lerp(node.colorPop, targetPop, dt * 15.0);
+          node.dotMat.color.setHex(node.colorPop > 0.28 ? node.cfg.hex : 0x94a3b8);
+
+          node.dotMat.opacity = hand.presenceFactor * node.activeFactor * (0.48 + node.colorPop * 0.50);
+
+          const dotScale = (0.76 + node.colorPop * 0.48) * Math.min(1.08, hand.presenceFactor) * Math.max(0.001, node.activeFactor);
+          node.dotMesh.scale.setScalar(Math.max(0.001, dotScale));
+
+          node.haloMat.opacity = hand.presenceFactor * node.activeFactor * Math.max(0, (node.colorPop - 0.22) * 0.85);
+          node.haloMesh.lookAt(camera.position);
+        });
+
+        // Chord lines only for Thumb-to-Pointer [1] and Thumb-to-Middle [2]
+        hand.chordLines.forEach((cl, idx) => {
+          const slot = idx + 1;
+          const fNode = hand.tipNodes[slot];
+          const posArr = cl.geom.attributes.position.array;
+          const t0 = hand.tipNodes[0].dotMesh.position;
+          const tN = fNode.dotMesh.position;
+          posArr[0] = t0.x; posArr[1] = t0.y; posArr[2] = t0.z;
+          posArr[3] = tN.x; posArr[4] = tN.y; posArr[5] = tN.z;
+          cl.geom.attributes.position.needsUpdate = true;
+
+          const activeLine = ((slot === 1 && hoveredInteractable) || hand.activePinchSlot === slot) && fNode.activeFactor > 0.25;
+          cl.mat.color.setHex(activeLine ? FINGERTIP_CONFIGS[slot].hex : 0x94a3b8);
+          cl.mat.opacity = hand.presenceFactor * fNode.activeFactor * (activeLine ? 0.58 : 0.0);
+        });
+
+        // Update Live Hand Telemetry inside the Camera HUD Box (Throttled for crisp 60fps UI)
+        if (hand === handsState[0]) {
+          // 1. Finger active pills
+          const tActive = hand.tipNodes[0]?.isFingerActive;
+          const pActive = hand.tipNodes[1]?.isFingerActive;
+          const mActive = hand.tipNodes[2]?.isFingerActive;
+          if (pillThumb) {
+            pillThumb.className = `px-1.5 py-0.5 rounded font-semibold text-[9px] ${tActive ? 'bg-slate-800 text-white' : 'bg-slate-200 text-slate-400'}`;
+          }
+          if (pillPointer) {
+            pillPointer.className = `px-1.5 py-0.5 rounded font-semibold text-[9px] ${hand.activePinchSlot === 1 ? 'bg-emerald-500 text-white' : (pActive ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-400')}`;
+          }
+          if (pillMiddle) {
+            pillMiddle.className = `px-1.5 py-0.5 rounded font-semibold text-[9px] ${hand.activePinchSlot === 2 ? 'bg-sky-500 text-white' : (mActive ? 'bg-sky-100 text-sky-800' : 'bg-slate-200 text-slate-400')}`;
+          }
+
+          // 2. Left Click [1] & Right Click [2] proximity percentage meters
+          const ptrProxPct = Math.round(THREE.MathUtils.clamp((1.45 - ratioPointer) / (1.45 - TOLERANCE.FINGER_TAP_ENGAGE), 0, 1) * 100);
+          const midProxPct = Math.round(THREE.MathUtils.clamp((1.45 - ratioMiddle) / (1.45 - TOLERANCE.FINGER_TAP_ENGAGE), 0, 1) * 100);
+
+          if (camLClickVal) camLClickVal.textContent = hand.activePinchSlot === 1 ? 'CLICKED' : `${ptrProxPct}%`;
+          if (camLClickBar) camLClickBar.style.width = `${hand.activePinchSlot === 1 ? 100 : ptrProxPct}%`;
+
+          if (camRClickVal) camRClickVal.textContent = hand.activePinchSlot === 2 ? 'CLICKED' : `${midProxPct}%`;
+          // 3. Swipe Scroll Axis & 2D Arc Sensor Readout
+          if (camSwipeState) {
+            camSwipeState.textContent = hand.flickState === 'LATCHED_RETURN' ? 'RETURN LOCK' : hand.flickState;
+            camSwipeState.className = hand.flickState === 'READY'
+              ? 'text-emerald-600 font-bold'
+              : (hand.flickState === 'CHARGING' ? 'text-sky-600 font-bold' : 'text-amber-600 font-bold');
+          }
+          if (camSwipeVel) {
+            const curDxPct = Math.round(absWindowDx * 100);
+            const reqDxPct = Math.round(TOLERANCE.SWIPE_MIN_CAM_DX * 100);
+            camSwipeVel.textContent = `ΔX: ${curDxPct}% / ${reqDxPct}%`;
+          }
+          if (camSwipeBar) {
+            const velPct = Math.round(velRatio * 100);
+            camSwipeBar.style.width = `${velPct}%`;
+            camSwipeBar.className = `h-full transition-all duration-75 ${hand.flickState === 'CHARGING' ? 'bg-emerald-500' : 'bg-sky-500'}`;
+          }
+
+          // 4. Current Exclusive Gesture Mutex & Coordinates
+          if (camHudGesture) {
+            let gText = 'IDLE // READY (1 MAX)';
+            if (hand.gestureMutex === 'CLICK' || hand.activePinchSlot > 0) {
+              gText = hand.activePinchSlot === 1 ? 'LOCKED: LEFT CLICK [1]' : 'LOCKED: RIGHT CLICK [2]';
+            } else if (hand.gestureMutex === 'SWIPE' || hand.flickState !== 'READY') {
+              gText = hand.flickState === 'CHARGING' ? 'LOCKED: SWIPE ARC' : 'LOCKED: RETURN RESET';
+            } else if (closestCard) {
+              gText = `HOVER // ORB ${closestCard.title}`;
+            } else if (closestScreen) {
+              gText = `HOVER // SCREEN ${closestScreen.orbId.toUpperCase()}`;
+            }
+            if (camHudGesture.textContent !== gText) camHudGesture.textContent = gText;
+          }
+
+          if (camCoordsReadout) {
+            camCoordsReadout.textContent = `X:${hand.palmCenter.x.toFixed(2)} Y:${hand.palmCenter.y.toFixed(2)}`;
+          }
+        }
+      });
+
+      // Animate Compact Morphing Central Planetary Core
+      coreGroup.position.y = CORE_BASE_POS.y + Math.sin(timeSec * 1.5) * 0.10;
+      coreGroup.rotation.y += coreState.rotVelY + carouselState.velRotation * 0.5;
+      coreGroup.rotation.x += coreState.rotVelX;
+      coreGroup.scale.setScalar(THREE.MathUtils.lerp(coreGroup.scale.x, coreState.targetScale, dt * 7.0));
+      coreState.explodeFactor = THREE.MathUtils.lerp(coreState.explodeFactor, coreState.targetExplode, dt * 5.0);
+
+      coreParts.forEach((part) => {
+        _scratchVecA.copy(part.basePos).addScaledVector(part.explodeDir, coreState.explodeFactor * part.explodeDist);
+        part.mesh.position.lerp(_scratchVecA, dt * 8.0);
+      });
+
+      // Rotate active Tutorial 3D Target Shape
+      if (tutorialState.active && transitionState.phase === 'NONE') {
+        tutShapeAnchor.rotation.y += dt * 0.85;
+        tutShapeAnchor.rotation.x = Math.sin(timeSec * 1.6) * 0.22;
+        tutDockRing.lookAt(camera.position);
+      }
+
+      updateTransitionSequence(dt);
+
+      // Decay Near-Ring Action Pad pulses
+      deckActionPads.forEach((pad) => {
+        pad.pulse = Math.max(0, pad.pulse - dt * 2.5);
+        pad.borderMat.color.setHex(pad.pulse > 0.05 ? pad.cfg.color : 0x94a3b8);
+        pad.borderMat.opacity = 0.25 + pad.pulse * 0.6;
+      });
+
+      positionCardsOnCylinder(dt);
+    }
+
+    function getFrontMostOrbCard() {
+      let frontCard = hudCards[0];
+      let minAngleDist = 999;
+      hudCards.forEach((c) => {
+        const normA = Math.atan2(Math.sin(c.baseAngle + carouselState.rotation), Math.cos(c.baseAngle + carouselState.rotation));
+        if (Math.abs(normA) < minAngleDist) {
+          minAngleDist = Math.abs(normA);
+          frontCard = c;
+        }
+      });
+      return frontCard;
+    }
+
+    function triggerFingerChordAction(slot, hoveredCard = null) {
+      const tapNow = performance.now();
+      if (pf.lastTap && pf.lastTap.slot === slot && tapNow - pf.lastTap.t < 250) return;
+      pf.lastTap = { slot, t: tapNow };
+      synth.init();
+      synth.playFingerTapChord(slot);
+      const pad = deckActionPads.find(p => p.cfg.slot === slot);
+      if (pad) pad.pulse = 1.0;
+
+      if (tutorialState.active) {
+        if (tutorialState.stepIndex === 0 && slot === 1) {
+          advanceTutorialStep();
+          return;
+        }
+        const reqMap = { 1: 'index', 2: 'middle' };
+        const curReq = tutorialSteps[tutorialState.stepIndex]?.reqAction;
+        if (reqMap[slot] === curReq) {
+          advanceTutorialStep();
+        }
+        return;
+      }
+
+      if (pf.engaged) {
+        if (slot === 1) pfAct(); else if (slot === 2) pfDisengage();
+        return;
+      }
+
+      if (slot === 1) {
+        // ===================================================================
+        // THUMB + POINTER TAP [1] = LEFT CLICK (Primary Select / Open Action)
+        // Never spins the scroll bar on its own; selects hovered or front Orb
+        // onto the Center Stage screen (or toggles 3D core inspect if already open).
+        // ===================================================================
+        const targetCard = hoveredCard || getFrontMostOrbCard();
+        if (!targetCard) return;
+
+        const centerBayCard = backScreenCards.find(sc => sc.bayIdx === 2);
+        const alreadyOnCenterStage = (selectedCardId === targetCard.id) && centerBayCard && (centerBayCard.orbId === targetCard.id);
+
+        if (alreadyOnCenterStage && pfTryEngage(targetCard)) {
+          // Project Aether: interactive nodes engage instead of toggling the core
+        } else if (alreadyOnCenterStage) {
+          // Left-clicking an already active Center Stage orb toggles 3D Core Inspect / Explode
+          coreState.targetExplode = coreState.targetExplode > 0.5 ? 0.0 : 1.0;
+          synth.playExplodeChord(coreState.targetExplode > 0.5);
+          redrawCockpitZoneHeaders(
+            `LEFT CLICK [1] // ORB ${targetCard.title} CORE ${coreState.targetExplode > 0.5 ? 'EXPANDED' : 'ASSEMBLED'}`,
+            "#22c55e"
+          );
+          showToast(`left click [1] // orb ${targetCard.title} core ${coreState.targetExplode > 0.5 ? 'expanded' : 'assembled'}`);
+        } else {
+          // Open the selected Orb on the Center Stage Screen
+          targetCard.scaleVel += 0.85;
+          spawnOrFocusBackScreen(targetCard.id, 2);
+          synth.playPinchLock();
+          redrawCockpitZoneHeaders(`LEFT CLICK [1] // OPENED ORB ${targetCard.title} ON CENTER STAGE`, "#22c55e");
+          showToast(`left click [1] // opened Orb ${targetCard.title}`);
+        }
+      } else if (slot === 2) {
+        // ===================================================================
+        // THUMB + MIDDLE TAP [2] = RIGHT CLICK (Context / Pin to Side Bay)
+        // Pins the active screen card (or hovered orb's card) to the next open
+        // side bay, or cycles bays if already pinned.
+        // ===================================================================
+        if (hoveredCard && hoveredCard.id !== selectedCardId) {
+          const sideBays = [1, 3, 0, 4];
+          const openBay = sideBays.find(bIdx => !backScreenCards.some(sc => sc.bayIdx === bIdx)) || sideBays[0];
+          spawnOrFocusBackScreen(hoveredCard.id, openBay);
+          redrawCockpitZoneHeaders(`RIGHT CLICK [2] // PINNED ORB ${hoveredCard.title} TO ${screenBays[openBay].name}`, "#0ea5e9");
+          showToast(`right click [2] // pinned Orb ${hoveredCard.title} to ${screenBays[openBay].name}`);
+        } else {
+          pinActiveScreenToNextOpenBay();
+          redrawCockpitZoneHeaders(`RIGHT CLICK [2] // PINNED ACTIVE SCREEN TO SIDE BAY`, "#0ea5e9");
+        }
+      }
+    }
+
+    // Also allow mouse wheel / trackpad two-finger scroll to spin the wheel effortlessly
+    let pfWheelAcc = 0;
+    window.addEventListener('wheel', (e) => {
+      if (tutorialState.active) return;
+      synth.init();
+      if (pf.engaged) {
+        pfWheelAcc += (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY);
+        if (Math.abs(pfWheelAcc) > 60) { pfMoveCursor(pfWheelAcc > 0 ? 1 : -1); pfWheelAcc = 0; }
+        return;
+      }
+      carouselState.hasTargetSnap = false;
+      const delta = (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY) * 0.0012;
+      carouselState.velRotation += delta;
+    }, { passive: true });
+
+    window.addEventListener('pointermove', (e) => {
+      mouseSim.ndcX = (e.clientX / window.innerWidth) * 2 - 1;
+      mouseSim.ndcY = -(e.clientY / window.innerHeight) * 2 + 1;
+    });
+
+    window.addEventListener('pointerdown', (e) => {
+      synth.init();
+      if (e.target && e.target.closest && e.target.closest('#cam-hud-preview')) return;
+      mouseSim.isDown = true;
+    });
+
+    // Single 'click' handler triggers getUserMedia cleanly without racing against pointerdown
+    window.addEventListener('click', (e) => {
+      synth.init();
+      if (e.target && e.target.closest && e.target.closest('#cam-hud-preview')) return;
+      if (tutorialState.active && tutorialState.stepIndex === 0 && !webcamActive && !isRequestingCamera) {
+        toggleWebcam();
+      }
+    });
+
+    window.addEventListener('pointerup', () => {
+      mouseSim.isDown = false;
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.target && e.target.tagName === 'INPUT') { if (e.key === 'Enter') pfJoin(e.target.value.trim()); return; }
+      const k = e.key.toLowerCase();
+      if (k === 'arrowleft' || k === 'arrowright') {
+        const d = k === 'arrowright' ? 1 : -1;
+        if (pf.engaged) pfMoveCursor(d);
+        else if (!tutorialState.active) {
+          const curIdx = Math.max(0, hudCards.findIndex(c => c.id === selectedCardId));
+          snapWheelToOrbIndex((curIdx + d + hudCards.length) % hudCards.length);
+        }
+        return;
+      }
+      if (k === 'escape') { pfDisengage(); return; }
+      if (k === 's' && tutorialState.active) { tutorialState.stepIndex = Math.max(tutorialState.stepIndex, 3); startTutorialEndAndContentIntro(); return; }
+      if (k === 'c') {
+        toggleWebcam();
+      } else if (k === 'm') {
+        toggleHudMinimized();
+      } else if (k === 't') {
+        startTutorialMode();
+      } else if (k === 'z') {
+        cockpitZonesVisible = !cockpitZonesVisible;
+        cockpitGroup.visible = cockpitZonesVisible;
+        showToast(`cockpit zones: ${cockpitZonesVisible ? 'on' : 'off'}`);
+      } else if (['1', '2'].includes(k)) {
+        const slot = parseInt(k, 10);
+        mouseSim.simulatedTapSlot = slot;
+        mouseSim.simulatedTapTimer = 0.28;
+        triggerFingerChordAction(slot);
+      } else if (k === 'p') {
+        pinActiveScreenToNextOpenBay();
+      }
+    });
+
+    function startTutorialMode() {
+      transitionState.phase = 'NONE';
+      transitionState.timer = 0.0;
+      shockwaveRings.forEach(sw => { sw.mat.opacity = 0.0; });
+      tutorialState.active = true;
+      tutorialGroup.visible = true;
+      coreState.targetExplode = 0.0;
+      pedestalOrbRingLine.visible = false;
+      screenWallGroup.visible = false;
+      hudCards.forEach(c => { c.mesh.visible = false; });
+      setTutorialStep(webcamActive ? 1 : 0);
+      showToast("tutorial restarted // zero orbs on screen");
+    }
+
+    // Initialize Tutorial Step 01 on startup with zero orbs visible
+    setTutorialStep(0);
+
+    // Project Aether: round from ?round=, else the last round used on this device
+    (function pfInit() {
+      const fromLink = new URLSearchParams(location.search).get('round');
+      const code = validRound(fromLink || '') ? fromLink : (validRound(store.get('aether-round') || '') ? store.get('aether-round') : null);
+      document.getElementById('pf-join').addEventListener('click', () => pfJoin(document.getElementById('pf-round').value.trim()));
+      document.getElementById('pf-round').addEventListener('input', (ev) => { ev.target.value = ev.target.value.replace(/\D/g, '').slice(0, 4); });
+      if (code) pfJoin(code); else { pfLoadRound(0); pfLinkUi(); }
+      // read-only handle for debugging and automated tests
+      window.__aether = { pf, Net, echoPress, get selectedOrb() { return selectedCardId; }, get carousel() { return carouselState; }, get phase() { return transitionState.phase; } };
+    })();
+
+    let lastFrameTime = performance.now();
+    function animate(now) {
+      requestAnimationFrame(animate);
+      const dt = Math.min(0.05, (now - lastFrameTime) * 0.001);
+      lastFrameTime = now;
+      const timeSec = now * 0.001;
+
+      processWebcamFrame(now);
+      updateSpatialPhysics(dt, timeSec);
+      pfFrame(now);
+
+      // Subtle seated head/hand parallax + Cinematic Camera Dolly during Tutorial End / Content Intro
+      const h0 = handsState[0];
+      const px = (webcamActive && h0 && h0.active) ? h0.pinchPoint.x * 0.12 : mouseSim.ndcX * 0.45;
+      const py = (webcamActive && h0 && h0.active) ? (h0.pinchPoint.y - 1.2) * 0.08 : mouseSim.ndcY * 0.25;
+
+      let camZoomOffsetZ = 0.0;
+      let camLiftOffsetY = 0.0;
+      if (transitionState.phase === 'TUTORIAL_OUTRO') {
+        const p = Math.min(1.0, transitionState.timer / transitionState.outroDuration);
+        camZoomOffsetZ = Math.sin(p * Math.PI * 0.5) * 2.2;
+        camLiftOffsetY = Math.sin(p * Math.PI * 0.5) * 0.85;
+      } else if (transitionState.phase === 'CONTENT_INTRO') {
+        const p = Math.min(1.0, transitionState.timer / transitionState.introDuration);
+        const easeOut = 1.0 - Math.pow(1.0 - p, 3);
+        camZoomOffsetZ = THREE.MathUtils.lerp(2.2, 0.0, easeOut);
+        camLiftOffsetY = THREE.MathUtils.lerp(0.85, 0.0, easeOut);
+      }
+
+      camera.position.x = THREE.MathUtils.lerp(camera.position.x, px, dt * 4.5);
+      camera.position.y = THREE.MathUtils.lerp(camera.position.y, CAM_BASE_Y + py + camLiftOffsetY, dt * 4.5);
+      camera.position.z = THREE.MathUtils.lerp(camera.position.z, CAM_BASE_Z + camZoomOffsetZ, dt * 4.5);
+      camera.lookAt(0, 0.25, -2.5);
+
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>
