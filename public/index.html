@@ -247,6 +247,13 @@ summary { cursor: pointer; font: 500 11px/1.4 var(--font-mono); letter-spacing: 
 .cells i.on { background: var(--ink); border-color: var(--ink); }
 
 /* ---------- Live room ---------- */
+.vent-banner { position: fixed; left: 14px; right: 14px; margin: 0 auto; width: fit-content; max-width: calc(100% - 28px); top: calc(env(safe-area-inset-top, 0px) + 112px); z-index: 16; padding: 8px 14px; border-radius: 6px; border: 1px solid var(--alert); background: var(--alert); color: #fff; font: 600 11px/1.4 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; cursor: pointer; animation: ventpulse 1s ease-in-out infinite; }
+@keyframes ventpulse { 50% { opacity: .72; } }
+.vent-live { padding: 14px; border: 1px solid var(--alert); border-radius: 8px; margin: 0 0 14px; display: grid; gap: 10px; }
+.vent-live .kicker { color: var(--alert); }
+.vent-count { margin: 0; font: 400 46px/1 var(--font-mono); color: var(--alert); }
+.status-dot.alarm { color: var(--alert); }
+.status-dot.alarm::before { background: var(--alert); border-color: var(--alert); }
 .clock { font: 500 15px/1 var(--font-mono); letter-spacing: .06em; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
 .clock.alert { color: var(--alert); border-color: var(--alert); }
 .role[data-role="pathfinder"]::after { border-color: #22C55E; }
@@ -290,6 +297,7 @@ summary { cursor: pointer; font: 500 11px/1.4 var(--font-mono); letter-spacing: 
 .log:empty::before { content: "Waiting for the crew"; font: 500 10px/1.4 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
 .offline-note { margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--alert); border-radius: 6px; color: var(--alert); font: 500 11px/1.5 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
 @media (prefers-reduced-motion: reduce) {
+  .vent-banner { animation: none; }
   #reticle .ring { animation: none; }
   .sheet { animation: none; }
   .flash.go { animation: none; }
@@ -365,6 +373,7 @@ summary { cursor: pointer; font: 500 11px/1.4 var(--font-mono); letter-spacing: 
     <div class="strikes" id="strikes" aria-label="Strikes: 0 of 3"><i></i><i></i><i></i></div>
   </header>
   <div id="status" class="status" role="status" hidden></div>
+  <button id="vent-banner" class="vent-banner" type="button" hidden></button>
   <div id="start-cam" class="start-cam">
     <p class="kicker">Optical sensor // Shard scanner</p>
     <h2>Start the scanner</h2>
@@ -456,6 +465,9 @@ summary { cursor: pointer; font: 500 11px/1.4 var(--font-mono); letter-spacing: 
           <button class="btn primary grow" type="button" id="dir-start">Start round</button>
           <button class="btn grow" type="button" id="dir-reset">Reset</button>
           <button class="btn grow" type="button" id="dir-new">New round</button>
+        </div>
+        <div class="control-row">
+          <button class="btn grow" type="button" id="dir-vent">Trigger vent alarm</button>
         </div>
         <p class="kicker ruled" style="margin-top:18px">Nodes // Directory</p>
         <div class="scroll-x"><table class="rule" id="dir-nodes"></table></div>
@@ -565,6 +577,11 @@ function echoPress(stage, shape, labels, hist, cells) {
   if (stage === 3) return { Triangle: hist[2][1], Square: posOf(hist[1][1]), Circle: 3, Cross: posOf(hist[2][0]) }[shape];
   return { Triangle: hist[2][0], Square: posOf(cells), Circle: hist[1][1], Cross: posOf(hist[3][1]) }[shape];
 }
+// Gauge levels for alarm number `index` of a round: the same on every device.
+function ventGaugesFor(code, index) {
+  const rnd = mulberry32(((code * 131) + index * 977 + 7) >>> 0);
+  return [1 + Math.floor(rnd() * 5), 1 + Math.floor(rnd() * 5), 1 + Math.floor(rnd() * 5)];
+}
 function ventAnswer(g, last) {
   const [L, C, R] = g;
   if (L === C && C === R) return 'Centre';
@@ -658,7 +675,8 @@ function makeRound(code) {
     hist[st] = [position, labels[position - 1]];
     stages.push({ shape, labels, position, label: labels[position - 1] });
   }
-  const gauges = [1 + int(5), 1 + int(5), 1 + int(5)];
+  int(5); int(5); int(5);  // keeps later draws (the maze) unchanged from earlier builds
+  const gauges = ventGaugesFor(code, 1);
   return {
     code, caseNumber: codename + ' ' + digits, last, cells, cellStates, sigil, nodeShard, shardNode, nodeSeal, deadShards,
     conduits: { strands, targets },
@@ -849,7 +867,7 @@ function enterField(role) {
     Object.assign(state, { role, code, round: makeRound(code), opened: [], active: null, view: null, strikes: 0, solved: new Set(), glyphStep: 0, tuner: 500, mazeKey: 'A' });
   }
   state.active = null; state.view = null; document.body.classList.remove('holo'); AR.stopPreview();
-  if (Net.round !== code || Net.role !== role) { state.epoch = null; state.lastSeenStrikes = undefined; }
+  if (Net.round !== code || Net.role !== role) { state.epoch = null; state.lastSeenStrikes = undefined; state.ventKey = undefined; }
   Net.connect(code, role); $('#clock').hidden = !Net.online;
   $('#role-name').textContent = ROLES[role].name;
   $('#round-label').textContent = `Round ${String(code).padStart(4, '0')}`;
@@ -1032,20 +1050,43 @@ const RENDER = {
       <p>Strike. The node resets to stage 1 with new shapes and labels, and the Flight Director clears the history.</p>`;
   },
   vent() {
-    return `<p class="lead">When the vent alarm sounds you have 45 seconds. Get the three gauge levels from the Pathfinder and the case number’s last digit from the Flight Director.</p>
+    const v = Net.state && Net.state.vent; const alarm = !!(v && v.active);
+    const live = Net.online && Net.state;
+    const top = !live ? '<p class="formula">Alarms only run in a live room. Open this node from a round the Flight Director has started.</p>'
+      : alarm ? `<div class="vent-live"><p class="kicker">Alarm ${v.index} // Vent now</p><p class="vent-count" id="vent-count">0:45</p>
+          <div class="nudge" style="grid-template-columns:repeat(3,1fr)">${['Left', 'Centre', 'Right'].map(c => `<button class="btn" type="button" data-vent="${c}">Vent ${c.toLowerCase()}</button>`).join('')}</div></div>`
+      : '<p class="done-note" style="border-color:var(--line);color:var(--ink-2)">Dormant. The alarm will sound during the round.</p>';
+    return `${top}
+      <p class="lead">When the vent alarm sounds you have 45 seconds. Get the three gauge levels from the Pathfinder and the case number’s last digit from the Flight Director.</p>
       <table class="rule"><thead><tr><th>Gauges</th><th>Vent</th></tr></thead><tbody>
         <tr><td>All three equal</td><td>Centre</td></tr>
         <tr><td>Exactly two equal</td><td>The odd one out</td></tr>
         <tr><td>All different, last digit 0 to 4</td><td>The highest</td></tr>
         <tr><td>All different, last digit 5 to 9</td><td>The lowest</td></tr>
       </tbody></table>
-      <p style="margin-top:12px" class="muted">The Pathfinder vents. A wrong vent or a timeout is a strike, and the vent goes back to sleep either way.</p>`;
+      <p style="margin-top:12px" class="muted">A wrong vent or a timeout is a strike, and the vent goes back to sleep either way.</p>`;
   }
 };
 const BIND = {
+  vent() {
+    $$('[data-vent]').forEach(b => b.addEventListener('click', () => {
+      const v = Net.state && Net.state.vent; if (!v || !v.active) return;
+      const choice = b.dataset.vent;
+      const ok = ventAnswer(ventGaugesFor(state.code, v.index), state.round.last) === choice;
+      Net.send({ type: 'vent', index: v.index, ok, choice });
+      $$('[data-vent]').forEach(x => { x.disabled = true; });
+      if (ok) { buzz(40); toast(`Vented the ${choice.toLowerCase()} gauge. The vent is asleep again.`, 'good', 'vent' + v.index); }
+      else { buzz([80, 60, 80]); const fl = $('#flash'); fl.classList.remove('go'); void fl.offsetWidth; fl.classList.add('go'); state.ownStrikePending = true; toast(`Strike: ${choice} was the wrong gauge`, 'bad', 'vent' + v.index); }
+    }));
+  },
   resonator() {
     const range = $('#freq'), out = $('#freq-out');
-    const set = v => { v = Math.max(400, Math.min(600, v)); range.value = v; out.textContent = v; state.tuner = v; };
+    let tunerSentAt = 0;
+    const set = v => {
+      v = Math.max(400, Math.min(600, v)); range.value = v; out.textContent = v; state.tuner = v;
+      const t = performance.now();
+      if (Net.online && t - tunerSentAt > 150) { tunerSentAt = t; Net.send({ type: 'live', node: 'resonator', data: { f: v } }); }
+    };
     range.addEventListener('input', () => set(+range.value));
     $$('.nudge .btn').forEach(b => b.addEventListener('click', () => set(+range.value + Number(b.dataset.d))));
     $('#transmit').addEventListener('click', () => {
@@ -1060,6 +1101,7 @@ const BIND = {
       const want = state.round.glyph.answer[state.glyphStep];
       if (key.dataset.glyph === want) {
         state.glyphStep++; key.classList.add('lit'); key.dataset.n = state.glyphStep;
+        if (Net.online) Net.send({ type: 'live', node: 'glyph', data: { step: state.glyphStep } });
         $('#glyph-progress').textContent = `${state.glyphStep} of 4 entered`;
         if (state.glyphStep === 4) { markSolved('glyph', 'The Glyph Lock is open'); openCard('glyph'); }
       } else {
@@ -1158,6 +1200,7 @@ function tick(now) {
   if (document.body.dataset.view === 'director') { tickDirector(); return; }
   if (document.body.dataset.view !== 'field') return;
   if (Net.state) { const c = $('#clock'); c.textContent = clockText(); c.classList.toggle('alert', Net.state.phase === 'live' && Net.remaining() < 60000); }
+  tickVent();
   const holo = state.active && state.view === 'holo';
   if (state.camOn && (state.active === null || holo) && $('#flat').hidden && now - lastDetect > 45) { lastDetect = now; detect(now); }
   if (holo && (state.camOn || AR.previewing) && $('#flat').hidden) {
@@ -1509,6 +1552,11 @@ function buildBallMaze() {
         phys.sink = Math.min(1, (now - phys.at) / 450);
         if (phys.mode === 'fall' && now - phys.at > 900) { phys.p = startXZ(); phys.v = [0, 0]; phys.mode = 'roll'; phys.sink = 0; }
       }
+      // Mirror the ball to the Pathfinder about ten times a second
+      if (Net.online && now - (phys.sentAt || 0) > 100) {
+        phys.sentAt = now;
+        Net.send({ type: 'live', node: 'descent', data: { p: [Math.round(phys.p[0] * 1000) / 1000, Math.round(phys.p[1] * 1000) / 1000], m: phys.mode } });
+      }
       ball.position.set(phys.p[0], rb - phys.sink * rb * 2.4, phys.p[1]);
       ball.visible = phys.sink < 1;
       shadow.position.set(phys.p[0], 0.003, phys.p[1]); shadow.visible = phys.sink < 0.3;
@@ -1754,7 +1802,7 @@ function renderTest() {
     <div class="test-card"><h3>The Echo Chamber</h3><div class="scroll-x"><table class="rule"><thead><tr><th>Stage</th><th>Shape</th><th>Pad labels, left to right</th></tr></thead><tbody>
       ${r.echo.stages.map((s, i) => `<tr><td>${i + 1}</td><td>${shapeSvg(s.shape)}${s.shape}</td><td>${s.labels.join(', ')}</td></tr>`).join('')}</tbody></table></div>
       ${ans(r.echo.stages.map((s, i) => `Stage ${i + 1}: position ${s.position} (label ${s.label})`).join('. ') + '.')}</div>
-    <div class="test-card"><h3>The Pressure Vent</h3><p style="margin:0">Gauges, left to right: ${r.vent.gauges.join(', ')}</p>
+    <div class="test-card"><h3>The Pressure Vent</h3><p style="margin:0">Gauges on the first alarm, left to right: ${r.vent.gauges.join(', ')}</p>
       ${ans(`Vent the ${r.vent.answer} gauge.`)}</div>
   </section>`;
 }
@@ -1831,6 +1879,16 @@ function onRoomState(st) {
   state.strikes = st.strikes; renderStrikes();
   let changed = false; st.solved.forEach(n => { if (!state.solved.has(n)) { state.solved.add(n); changed = true; } });
   if (changed) renderChips();
+  // Pressure Vent alarm: the Astrophysicist's interrupt
+  const vent = st.vent || { active: false, index: 0 };
+  const ventKey = `${vent.active ? 1 : 0}|${vent.index}`;
+  if (ventKey !== state.ventKey) {
+    const was = state.ventKey; state.ventKey = ventKey;
+    if (state.role === 'astro') {
+      if (vent.active && was !== undefined) { buzz([120, 80, 120, 80, 120]); toast('Pressure Vent alarm. You have 45 seconds.', 'bad', 'ventalarm' + vent.index); }
+      if (state.active === 'vent' && !$('#sheet').hidden) openCard('vent');
+    }
+  }
   const over = st.phase === 'won' || st.phase === 'lost';
   $('#lost').hidden = !over; $('#lost').classList.toggle('won', st.phase === 'won');
   if (over) {
@@ -1838,6 +1896,24 @@ function onRoomState(st) {
     $('#lost-text').textContent = st.phase === 'won' ? 'All five nodes are open. The Monolith is yours.' : `${st.outcome || 'The link failed'}. The Flight Director can reset the round.`;
   }
 }
+
+const ventLeft = () => { const v = Net.state && Net.state.vent; return v && v.active ? Math.max(0, v.endsAt - (Date.now() + Net.offset)) : 0; };
+const fmtShort = ms => { const t = Math.ceil(ms / 1000); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+function tickVent() {
+  const v = Net.state && Net.state.vent; const banner = $('#vent-banner');
+  const show = !!(v && v.active && Net.state.phase === 'live' && state.role === 'astro');
+  banner.hidden = !show;
+  if (!show) return;
+  const left = fmtShort(ventLeft());
+  const here = state.active === 'vent';
+  const text = here ? `Vent alarm // ${left}` : `Vent alarm // ${left} // Open the Pressure Vent`;
+  if (banner.textContent !== text) banner.textContent = text;
+  const c = $('#vent-count'); if (c && c.textContent !== left) c.textContent = left;
+}
+$('#vent-banner').addEventListener('click', () => {
+  if (state.opened.includes('vent')) { openNode('vent'); openCard('vent'); }
+  else toast(`Scan shard ${state.round.nodeShard.vent} to open the Pressure Vent`, 'bad', 'ventscan');
+});
 
 // ---------- Flight Director ----------
 let dirRound = null, dirRoundData = null;
@@ -1862,6 +1938,7 @@ function renderDirector() {
   $('#dir-start').disabled = !st || phase !== 'lobby';
   $('#dir-reset').disabled = !st || phase === 'lobby';
   $('#dir-length').disabled = !st || phase !== 'lobby';
+  $('#dir-vent').disabled = !st || phase !== 'live' || (st.vent && st.vent.active);
   if (st) $('#dir-length').value = String(st.durationMs);
   const strikes = st ? st.strikes : 0;
   $$('#dir-strikes i').forEach((el, i) => el.classList.toggle('on', i < strikes));
@@ -1875,7 +1952,7 @@ function renderDirector() {
   const solved = new Set(st ? st.solved : []);
   $('#dir-nodes').innerHTML = `<thead><tr><th>Seal word</th><th>Shard</th><th>Node</th><th>Specialist</th><th>Status</th></tr></thead><tbody>${
     NODES.map(n => `<tr><td>${r.nodeSeal[n.id]}</td><td>${r.nodeShard[n.id]}</td><td>${n.name}</td><td>${ROLES[n.owner].name}</td><td>${
-      n.id === 'vent' ? '<span class="status-dot">Interrupt</span>' : `<span class="status-dot${solved.has(n.id) ? ' done' : ''}">${solved.has(n.id) ? 'Open' : 'Sealed'}</span>`}</td></tr>`).join('')
+      n.id === 'vent' ? '<span class="status-dot" id="dir-vent-status">Dormant</span>' : `<span class="status-dot${solved.has(n.id) ? ' done' : ''}">${solved.has(n.id) ? 'Open' : 'Sealed'}</span>`}</td></tr>`).join('')
   }</tbody>`;
   const log = st ? st.log.slice().reverse() : [];
   $('#dir-log').innerHTML = log.map(e => `<li>[${fmtClock(e.t)}] <b>${escapeHtml(e.who)}</b> // ${escapeHtml(e.text)}</li>`).join('');
@@ -1884,6 +1961,7 @@ const ROLE_TITLES = { xeno: 'Xenolinguist', astro: 'Astrophysicist', pathfinder:
 const escapeHtml = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 $('#pathfinder-link').addEventListener('click', e => { e.preventDefault(); location.href = `pathfinder?round=${String(currentCode()).padStart(4, '0')}`; });
 $('#dir-start').addEventListener('click', () => Net.send({ type: 'start' }));
+$('#dir-vent').addEventListener('click', () => Net.send({ type: 'ventNow' }));
 $('#dir-reset').addEventListener('click', () => { if (confirm('Reset this round for the whole crew?')) Net.send({ type: 'reset' }); });
 $('#dir-new').addEventListener('click', () => { const v = newCode(); $('#round-input').value = v; store.set('aether-round', v); enterDirector(); });
 $('#dir-length').addEventListener('change', e => Net.send({ type: 'length', durationMs: Number(e.target.value) }));
@@ -1893,6 +1971,12 @@ function tickDirector() {
   if (!st) { el.textContent = '--:--'; return; }
   const ms = Net.remaining(); el.textContent = fmtClock(ms);
   el.classList.toggle('alert', st.phase === 'live' && ms < 60000);
+  const vs = $('#dir-vent-status');
+  if (vs) {
+    const on = st.vent && st.vent.active && st.phase === 'live';
+    const text = on ? `Alarm ${fmtShort(ventLeft())}` : 'Dormant';
+    if (vs.textContent !== text) { vs.textContent = text; vs.classList.toggle('alarm', !!on); }
+  }
 }
 
 // ---------- Home ----------

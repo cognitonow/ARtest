@@ -7,6 +7,7 @@ const ROLES = { director: 'Flight Director', pathfinder: 'Pathfinder', xeno: 'Xe
 const MAIN_NODES = ['conduits', 'resonator', 'glyph', 'descent', 'echo'];
 const NODE_NAMES = { conduits: 'the Conduits', resonator: 'the Resonator', glyph: 'the Glyph Lock', descent: 'the Descent', echo: 'the Echo Chamber' };
 const LENGTHS = [8, 10, 12, 15].map(m => m * 60000);
+const VENT_MS = 45000, VENT_FIRST_MS = 90000;
 
 export default {
   async fetch(request, env) {
@@ -24,7 +25,8 @@ export class Room extends DurableObject {
     ctx.blockConcurrencyWhile(async () => { this.s = (await ctx.storage.get('state')) || null; });
   }
   fresh(round, epoch = 0, durationMs = 10 * 60000) {
-    return { round, epoch, phase: 'lobby', durationMs, remainingAtMark: durationMs, markAt: 0, rate: 1, strikes: 0, solved: [], outcome: '', log: [] };
+    return { round, epoch, phase: 'lobby', durationMs, remainingAtMark: durationMs, markAt: 0, rate: 1, strikes: 0, solved: [], outcome: '', log: [],
+      vent: { active: false, index: 0, endsAt: 0, nextAt: 0 } };
   }
   remaining(now) {
     const s = this.s; if (s.phase !== 'live') return s.remainingAtMark;
@@ -37,16 +39,38 @@ export class Room extends DurableObject {
   }
   end(now, phase, why) {
     this.rebase(now); this.s.phase = phase; this.s.outcome = why; this.note(now, 'Room', why);
+    this.s.vent.active = false; this.s.vent.nextAt = 0;
     this.ctx.storage.deleteAlarm();
   }
   async armAlarm(now) {
     const s = this.s; if (s.phase !== 'live') return;
-    await this.ctx.storage.setAlarm(now + Math.ceil(this.remaining(now) / s.rate) + 50);
+    let wake = now + Math.ceil(this.remaining(now) / s.rate) + 50;
+    const v = s.vent;
+    if (v.active) wake = Math.min(wake, v.endsAt + 30); else if (v.nextAt) wake = Math.min(wake, v.nextAt + 30);
+    await this.ctx.storage.setAlarm(Math.max(now + 20, wake));
+  }
+  strike(now, who, reason) {
+    const s = this.s;
+    this.rebase(now); s.strikes += 1; s.rate = 1 + 0.15 * Math.min(2, s.strikes);
+    this.note(now, who, 'Strike: ' + String(reason || '').slice(0, 140));
+    if (s.strikes >= 3) this.end(now, 'lost', 'Three strikes');
+  }
+  // The Pressure Vent is an interrupt: it wakes during the round, counts down 45 seconds, then sleeps for 60 to 120 seconds.
+  ventStart(now) {
+    const v = this.s.vent; v.active = true; v.index += 1; v.endsAt = now + VENT_MS; v.nextAt = 0;
+    this.note(now, 'Room', `Pressure Vent alarm ${v.index}`);
+  }
+  ventSleep(now) {
+    const v = this.s.vent; v.active = false; v.endsAt = 0;
+    v.nextAt = this.s.phase === 'live' ? now + 60000 + Math.floor(Math.random() * 60000) : 0;
   }
   async alarm() {
-    const now = Date.now();
-    if (this.s && this.s.phase === 'live' && this.remaining(now) <= 0) { this.end(now, 'lost', 'Time ran out'); await this.save(); this.broadcast(); }
-    else await this.armAlarm(now);
+    const now = Date.now(); const s = this.s;
+    if (!s || s.phase !== 'live') return;
+    if (this.remaining(now) <= 0) this.end(now, 'lost', 'Time ran out');
+    else if (s.vent.active && now >= s.vent.endsAt) { this.ventSleep(now); this.strike(now, 'Room', 'The Pressure Vent was not vented in time'); }
+    else if (!s.vent.active && s.vent.nextAt && now >= s.vent.nextAt) this.ventStart(now);
+    await this.save(); this.broadcast(); await this.armAlarm(now);
   }
   players() {
     return this.ctx.getWebSockets().map(ws => ws.deserializeAttachment()).filter(Boolean);
@@ -62,6 +86,7 @@ export class Room extends DurableObject {
     const url = new URL(request.url);
     const round = Number(url.pathname.split('/')[2]);
     if (!this.s) { this.s = this.fresh(round); await this.save(); }
+    if (!this.s.vent) this.s.vent = { active: false, index: 0, endsAt: 0, nextAt: 0 };  // rooms saved before the vent existed
     if (url.pathname.endsWith('/state')) return Response.json(this.view(), { headers: { 'cache-control': 'no-store' } });
     if (request.headers.get('Upgrade') !== 'websocket') return new Response('Expected a WebSocket', { status: 426 });
     const role = url.searchParams.get('role');
@@ -78,6 +103,8 @@ export class Room extends DurableObject {
 
   async webSocketMessage(ws, raw) {
     let msg; try { msg = JSON.parse(raw); } catch (e) { return; }
+    if (!this.s) return;
+    if (!this.s.vent) this.s.vent = { active: false, index: 0, endsAt: 0, nextAt: 0 };
     const who = ws.deserializeAttachment() || {}; const s = this.s; const now = Date.now();
     if (s.phase === 'live' && this.remaining(now) <= 0) this.end(now, 'lost', 'Time ran out');
     const director = who.role === 'director';
@@ -87,18 +114,37 @@ export class Room extends DurableObject {
         if (director && s.phase === 'lobby' && LENGTHS.includes(msg.durationMs)) { s.durationMs = s.remainingAtMark = msg.durationMs; }
         break;
       case 'start':
-        if (director && s.phase === 'lobby') { s.phase = 'live'; s.markAt = now; s.remainingAtMark = s.durationMs; s.rate = 1; this.note(now, who.name, 'Round started'); await this.armAlarm(now); }
+        if (director && s.phase === 'lobby') {
+          s.phase = 'live'; s.markAt = now; s.remainingAtMark = s.durationMs; s.rate = 1;
+          s.vent = { active: false, index: 0, endsAt: 0, nextAt: now + VENT_FIRST_MS };
+          this.note(now, who.name, 'Round started'); await this.armAlarm(now);
+        }
         break;
       case 'reset':
         if (director) { const keep = s.durationMs; this.s = this.fresh(s.round, s.epoch + 1, keep); this.note(now, who.name, 'Round reset'); await this.ctx.storage.deleteAlarm(); }
         break;
       case 'strike':
-        if (s.phase === 'live') {
-          this.rebase(now); s.strikes += 1; s.rate = 1 + 0.15 * Math.min(2, s.strikes);
-          this.note(now, who.name, 'Strike: ' + String(msg.reason || '').slice(0, 140));
-          if (s.strikes >= 3) this.end(now, 'lost', 'Three strikes'); else await this.armAlarm(now);
+        if (s.phase === 'live') { this.strike(now, who.name, msg.reason); await this.armAlarm(now); }
+        break;
+      case 'vent':
+        // The phone checks the choice against the vent rule; the room records it and puts the vent back to sleep.
+        if (s.phase === 'live' && s.vent.active && Number(msg.index) === s.vent.index) {
+          this.ventSleep(now);
+          if (msg.ok) this.note(now, who.name, `Vented the ${String(msg.choice || '').slice(0, 12)} gauge`);
+          else this.strike(now, who.name, `Vented the wrong gauge (${String(msg.choice || '').slice(0, 12)})`);
+          await this.armAlarm(now);
         }
         break;
+      case 'ventNow':
+        if (director && s.phase === 'live' && !s.vent.active) { this.ventStart(now); await this.armAlarm(now); }
+        break;
+      case 'live': {
+        // Movement such as the rolling ball: passed straight to the other devices, never stored.
+        const body = JSON.stringify({ type: 'live', from: who.role, node: String(msg.node || '').slice(0, 20), data: msg.data });
+        if (body.length > 700) return;
+        for (const other of this.ctx.getWebSockets()) { if (other !== ws) { try { other.send(body); } catch (e) {} } }
+        return;
+      }
       case 'solved':
         if (s.phase === 'live' && MAIN_NODES.includes(msg.node) && !s.solved.includes(msg.node)) {
           s.solved.push(msg.node); this.note(now, who.name, `Opened ${NODE_NAMES[msg.node]}`);

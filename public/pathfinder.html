@@ -314,6 +314,11 @@ function echoPress(stage, shape, labels, hist, cells) {
   if (stage === 3) return { Triangle: hist[2][1], Square: posOf(hist[1][1]), Circle: 3, Cross: posOf(hist[2][0]) }[shape];
   return { Triangle: hist[2][0], Square: posOf(cells), Circle: hist[1][1], Cross: posOf(hist[3][1]) }[shape];
 }
+// Gauge levels for alarm number `index` of a round: the same on every device.
+function ventGaugesFor(code, index) {
+  const rnd = mulberry32(((code * 131) + index * 977 + 7) >>> 0);
+  return [1 + Math.floor(rnd() * 5), 1 + Math.floor(rnd() * 5), 1 + Math.floor(rnd() * 5)];
+}
 function ventAnswer(g, last) {
   const [L, C, R] = g;
   if (L === C && C === R) return 'Centre';
@@ -407,7 +412,8 @@ function makeRound(code) {
     hist[st] = [position, labels[position - 1]];
     stages.push({ shape, labels, position, label: labels[position - 1] });
   }
-  const gauges = [1 + int(5), 1 + int(5), 1 + int(5)];
+  int(5); int(5); int(5);  // keeps later draws (the maze) unchanged from earlier builds
+  const gauges = ventGaugesFor(code, 1);
   return {
     code, caseNumber: codename + ' ' + digits, last, cells, cellStates, sigil, nodeShard, shardNode, nodeSeal, deadShards,
     conduits: { strands, targets },
@@ -529,14 +535,17 @@ function drawGlyph(ctx, name, x, y, size, color) {
     const pf = {
       code: 0, round: null, engaged: null, cursor: 0,
       cut: new Set(), wrongCut: new Set(), echoStage: 1, echoHist: {}, echoAttempt: 0, echoStages: [],
-      solved: new Set(), strikes: 0, epoch: null, lastDomSig: ''
+      solved: new Set(), strikes: 0, epoch: null, lastDomSig: '', live: {}, gen: 0
     };
+    const PF_SOON = { starmap: 'The Star Map', dice: 'The Dice Vault' };
+    const pfNodeName = node => (NODE[node] ? NODE[node].name : PF_SOON[node]);
     function pfLoadRound(code) {
       pf.code = code; pf.round = makeRound(code); pf.epoch = null; pfResetProgress();
     }
     function pfResetProgress() {
       Object.assign(pf, { engaged: null, cursor: 0, cut: new Set(), wrongCut: new Set(), echoStage: 1, echoHist: {}, echoAttempt: 0, solved: new Set(), strikes: 0 });
       pf.echoStages = pf.round.echo.stages.map(s => ({ shape: s.shape, labels: s.labels.slice() }));
+      pf.live = {}; pf.gen += 1;
       pfDirtyAll();
     }
     function pfEchoNewStages() {
@@ -715,6 +724,8 @@ function drawGlyph(ctx, name, x, y, size, color) {
       else if (node === 'resonator') dyn = pfPulseOn(now) ? 1 : 0;
       else if (node === 'echo') dyn = `${pf.echoStage}|${pf.echoAttempt}`;
       else if (node === 'descent') dyn = Math.floor(now / 130) % 12;
+      else if (node === 'vent') { const v = pfVent(); dyn = v ? `${v.index}|${Math.ceil((v.endsAt - (Date.now() + Net.offset)) / 1000)}` : 'dormant'; }
+      else if (node === 'glyph') dyn = pf.live.glyph ? pf.live.glyph.step : 0;
       const sig = `${sc.orbId}|${sc.bayIdx}|${sc.isHovered ? 1 : 0}|${sc.isGrabbed ? 1 : 0}|${solved ? 1 : 0}|${engaged ? 1 : 0}|${engaged ? pf.cursor : -1}|${dyn}|${line}|${pf.code}`;
       if (sc.lastDrawSig === sig) return;
       sc.lastDrawSig = sig;
@@ -734,18 +745,18 @@ function drawGlyph(ctx, name, x, y, size, color) {
       ctx.font = '600 19px "JetBrains Mono", monospace'; ctx.textAlign = 'left'; ctx.fillStyle = mute;
       ctx.fillText(`${bay.name}  //  ORB ${cfg.title}`, 48, 70);
       ctx.textAlign = 'right'; ctx.fillStyle = ink;
-      ctx.fillText(`SEAL WORD  //  ${r.nodeSeal[node].toUpperCase()}`, W - 48, 70);
+      ctx.fillText(PF_SOON[node] ? 'SEAL WORD  //  NONE' : `SEAL WORD  //  ${r.nodeSeal[node].toUpperCase()}`, W - 48, 70);
       ctx.strokeStyle = 'rgba(15,23,42,0.14)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(48, 90); ctx.lineTo(W - 48, 90); ctx.stroke();
       // title + status pill
       ctx.textAlign = 'left'; ctx.fillStyle = ink; ctx.font = '200 62px "Inter", sans-serif';
-      ctx.fillText(NODE[node].name, 46, 160);
-      const pill = solved ? 'OPEN' : (node === 'vent' ? 'INTERRUPT' : 'SEALED');
+      ctx.fillText(pfNodeName(node), 46, 160);
+      const pill = PF_SOON[node] ? 'NEXT BUILD' : solved ? 'OPEN' : (node === 'vent' ? (pfVent() ? 'ALARM' : 'INTERRUPT') : 'SEALED');
       ctx.font = '600 18px "JetBrains Mono", monospace';
       const pw = ctx.measureText(pill).width + 32;
       ctx.strokeStyle = solved ? ok : ink; ctx.lineWidth = 2; ctx.strokeRect(W - 48 - pw, 124, pw, 40);
       ctx.fillStyle = solved ? ok : ink; ctx.textAlign = 'center'; ctx.fillText(pill, W - 48 - pw / 2, 151);
       ctx.textAlign = 'left'; ctx.fillStyle = accent; ctx.font = '600 18px "JetBrains Mono", monospace';
-      ctx.fillText(NODE_HINTS[node], 48, 198);
+      ctx.fillText(NODE_HINTS[node] || 'NOT INSTALLED  //  ARRIVES IN A LATER BUILD', 48, 198);
       // diagram frame
       const DX = 40, DY = 220, DW = 600, DH = 384;
       ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2; ctx.strokeRect(DX, DY, DW, DH);
@@ -777,7 +788,8 @@ function drawGlyph(ctx, name, x, y, size, color) {
       ctx.fillStyle = mute; ctx.font = '500 15px "JetBrains Mono", monospace'; ctx.fillText((parts[1] || '').slice(0, 30), HX + 24, DY + 360);
       // controls footer
       let foot;
-      if (!isCenter) foot = 'PINNED  //  [1] ON ITS ORB TO BRING IT TO CENTER STAGE';
+      if (PF_SOON[node]) foot = 'NOTHING TO READ HERE YET';
+      else if (!isCenter) foot = 'PINNED  //  [1] ON ITS ORB TO BRING IT TO CENTER STAGE';
       else if (engaged) foot = 'ENGAGED  //  SWIPE TO CHOOSE  ·  [1] ACT  ·  [2] RELEASE';
       else if (INTERACTIVE_NODES.includes(node) && !solved) foot = '[1] AGAIN TO ENGAGE THIS NODE';
       else foot = 'READ-ONLY  //  DESCRIBE IT TO THE FLIGHT DIRECTOR';
@@ -821,7 +833,9 @@ function drawGlyph(ctx, name, x, y, size, color) {
         r.glyph.glyphs.forEach((g, i) => {
           const bx = X + 20 + (i % 2) * 290, by = Y + 18 + Math.floor(i / 2) * 182;
           ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2; ctx.strokeRect(bx, by, 270, 166);
-          drawGlyph(ctx, g, bx + 70, by + 18, 130, solved ? '#16a34a' : ink);
+          const k = r.glyph.answer.indexOf(g), step = solved ? 4 : (pf.live.glyph ? pf.live.glyph.step : 0), entered = k >= 0 && k < step;
+          drawGlyph(ctx, g, bx + 70, by + 18, 130, entered ? '#16a34a' : ink);
+          if (entered) { ctx.fillStyle = '#16a34a'; ctx.font = '600 22px "JetBrains Mono", monospace'; ctx.textAlign = 'right'; ctx.fillText('#' + (k + 1), bx + 256, by + 32); }
           ctx.fillStyle = mute; ctx.font = '600 22px "JetBrains Mono", monospace'; ctx.textAlign = 'left';
           ctx.fillText(String(i + 1), bx + 14, by + 32);
         });
@@ -852,14 +866,21 @@ function drawGlyph(ctx, name, x, y, size, color) {
           ctx.fillStyle = mute; ctx.font = '500 13px "JetBrains Mono", monospace'; ctx.fillText(`POS ${i + 1}`, px + 35, py + 196);
           if (engaged && pf.cursor === i) { ctx.strokeStyle = '#22c55e'; ctx.lineWidth = 6; ctx.strokeRect(px - 8, py - 8, 86, 176); }
         });
-      } else {
+      } else if (node === 'vent') {
+        const v = pfVent(); const levels = v ? ventGaugesFor(pf.code, v.index) : [0, 0, 0];
         ['LEFT', 'CENTRE', 'RIGHT'].forEach((lab, i) => {
           const gx = X + 110 + i * 170, gy = Y + 50;
-          ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 4; ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(gx, gy, 80, 250, 12); else ctx.rect(gx, gy, 80, 250); ctx.stroke();
+          ctx.strokeStyle = v ? '#b45309' : '#94a3b8'; ctx.lineWidth = 4; ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(gx, gy, 80, 250, 12); else ctx.rect(gx, gy, 80, 250); ctx.stroke();
+          for (let k = 0; k < levels[i]; k++) { ctx.fillStyle = '#f59e0b'; ctx.fillRect(gx + 10, gy + 250 - 10 - (k + 1) * 46 + 6, 60, 40); }
           ctx.fillStyle = mute; ctx.font = '600 16px "JetBrains Mono", monospace'; ctx.textAlign = 'center'; ctx.fillText(lab, gx + 40, gy + 284);
+          if (v) { ctx.fillStyle = ink; ctx.font = '600 26px "JetBrains Mono", monospace'; ctx.fillText(String(levels[i]), gx + 40, gy - 12); }
         });
-        ctx.fillStyle = ink; ctx.font = '600 18px "JetBrains Mono", monospace'; ctx.textAlign = 'center';
-        ctx.fillText('DORMANT  //  NO ALARM', cx, Y + H - 14);
+        ctx.fillStyle = v ? '#b45309' : ink; ctx.font = '600 18px "JetBrains Mono", monospace'; ctx.textAlign = 'center';
+        ctx.fillText(v ? `ALARM ${v.index}  //  READ THE THREE LEVELS  //  0:${String(Math.max(0, Math.ceil((v.endsAt - (Date.now() + Net.offset)) / 1000))).padStart(2, '0')}` : 'DORMANT  //  NO ALARM', cx, Y + H - 14);
+      } else {
+        ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 3; ctx.setLineDash([14, 12]); ctx.strokeRect(X + 60, Y + 60, W - 120, H - 120); ctx.setLineDash([]);
+        ctx.fillStyle = mute; ctx.font = '600 20px "JetBrains Mono", monospace'; ctx.textAlign = 'center';
+        ctx.fillText('THIS NODE IS NOT INSTALLED YET', cx, cy + 6);
       }
       ctx.restore();
     }
@@ -877,7 +898,11 @@ function drawGlyph(ctx, name, x, y, size, color) {
         catch (e) { this.failed = true; pfLinkUi(); return; }
         this.ws = ws;
         ws.onopen = () => { this.everOnline = true; this.failed = false; this.retry = 0; this.online = true; this.send({ type: 'hello' }); pushLog(`[LINK] joined room ${String(this.round).padStart(4, '0')}`); pfLinkUi(); };
-        ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch (err) { return; } if (m.type === 'state') { this.offset = m.state.serverNow - Date.now(); this.state = m.state; pfOnRoomState(m.state); } };
+        ws.onmessage = e => {
+          let m; try { m = JSON.parse(e.data); } catch (err) { return; }
+          if (m.type === 'state') { this.offset = m.state.serverNow - Date.now(); this.state = m.state; pfOnRoomState(m.state); }
+          else if (m.type === 'live' && m.node) pf.live[m.node] = Object.assign({ at: performance.now() }, m.data || {});
+        };
         ws.onclose = () => {
           if (this.ws !== ws) return;
           this.ws = null; this.online = false;
@@ -900,6 +925,14 @@ function drawGlyph(ctx, name, x, y, size, color) {
         if (st.phase === 'won') { pf.engaged = null; redrawCockpitZoneHeaders('CORE BREACHED // ROUND WON', '#22c55e'); showToast('core breached // the monolith is yours'); synth.playExplodeChord(true); }
         if (st.phase === 'lost') { pf.engaged = null; redrawCockpitZoneHeaders(`LINK LOST // ${String(st.outcome).toUpperCase()}`, '#e11d48'); showToast(`link lost // ${String(st.outcome).toLowerCase()}`); }
       }
+      const ventOn = !!(st.vent && st.vent.active && st.phase === 'live');
+      if (ventOn && !pf.ventOn) {
+        pushLog(`[ALARM] pressure vent ${st.vent.index} // read the three gauges`);
+        showToast('pressure vent alarm // open orb 06 and read the gauges');
+        redrawCockpitZoneHeaders('PRESSURE VENT ALARM // ORB 06', '#f59e0b');
+        synth.playExplodeChord(false);
+      } else if (!ventOn && pf.ventOn) pushLog('[ALARM] pressure vent asleep');
+      if (ventOn !== pf.ventOn) { pf.ventOn = ventOn; pfDirtyAll(); }
       pf.lastStrikes = st.strikes; pf.lastPhase = st.phase;
       pfLinkUi();
     }
@@ -919,6 +952,8 @@ function drawGlyph(ctx, name, x, y, size, color) {
       pfLinkUi();
     }
     function pfFrame(now) {
+      const dt = Math.min(0.05, Math.max(0, (now - (pf.lastFrame || now)) / 1000)); pf.lastFrame = now;
+      pfStageFrame(now, dt);
       if (typeof backScreenCards !== 'undefined') backScreenCards.forEach(sc => pfDrawCard(sc));
       const clockEl = document.getElementById('pf-clock'), strikesEl = document.getElementById('pf-strikes');
       const st = Net.state;
@@ -995,6 +1030,265 @@ function drawGlyph(ctx, name, x, y, size, color) {
           }
         }
       }
+    }
+
+    /**************************************************************************
+     * PROJECT AETHER // PUZZLE STAGE
+     * The node on Center Stage rises out of the central well as a 3D puzzle:
+     * the Pathfinder's version of the relic the phones see. The planetary core
+     * steps aside while a puzzle is up.
+     **************************************************************************/
+    const ST = { ink: 0x0f172a, slate: 0x1e293b, mute: 0x94a3b8, paper: 0xf8fafc, ok: 0x16a34a, alert: 0xe11d48, amber: 0xf59e0b, pick: 0x22c55e, navy: 0x2b3446 };
+    const stMat = (color, extra = {}) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.72, metalness: 0.04 }, extra));
+    const stLine = (color = ST.ink, opacity = 0.6) => new THREE.LineBasicMaterial({ color, transparent: true, opacity });
+    function stSolid(geo, mat, parent, x = 0, y = 0, z = 0) {
+      const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); parent.add(m);
+      m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), stLine(ST.ink, 0.5)));
+      return m;
+    }
+    function stLabel(text, height = 0.3, opts = {}) {
+      const c = document.createElement('canvas'); const g = c.getContext('2d');
+      const font = `${opts.weight || 600} 64px "JetBrains Mono", monospace`;
+      g.font = font; const tw = Math.ceil(g.measureText(String(text)).width);
+      c.width = tw + 56; c.height = 104;
+      const g2 = c.getContext('2d');
+      if (!opts.bare) { g2.fillStyle = opts.bg || 'rgba(248,250,252,0.94)'; g2.fillRect(0, 0, c.width, c.height); g2.strokeStyle = opts.border || 'rgba(15,23,42,0.5)'; g2.lineWidth = 4; g2.strokeRect(2, 2, c.width - 4, c.height - 4); }
+      g2.font = font; g2.fillStyle = opts.color || '#0f172a'; g2.textAlign = 'center'; g2.textBaseline = 'middle';
+      g2.fillText(String(text), c.width / 2, c.height / 2 + 4);
+      const tex = new THREE.CanvasTexture(c); tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false;
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+      s.scale.set(height * c.width / c.height, height, 1);
+      return s;
+    }
+    function stDispose(obj) {
+      obj.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } });
+    }
+    function stPickFrame(w, h, d) {
+      const f = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(w, h, d)), new THREE.LineBasicMaterial({ color: ST.pick }));
+      f.visible = false; return f;
+    }
+
+    // ---- The Conduits: a loom of strands. Caps and flicker are the Pathfinder's to read; cutting happens here. ----
+    function stageConduits() {
+      const g = new THREE.Group(); const strands = pf.round.conduits.strands, n = strands.length;
+      const W = 3.5, H = 1.7, y0 = 0.42, x = i => -W / 2 + W * (i + 0.5) / n;
+      const white = stMat(ST.paper);
+      stSolid(new THREE.BoxGeometry(W + 0.5, 0.09, 0.2), white, g, 0, y0, 0);
+      stSolid(new THREE.BoxGeometry(W + 0.5, 0.09, 0.2), white, g, 0, y0 + H, 0);
+      for (const sx of [-1, 1]) stSolid(new THREE.BoxGeometry(0.09, H, 0.09), white, g, sx * (W / 2 + 0.2), y0 + H / 2, 0);
+      const parts = strands.map((s, i) => {
+        const mat = stMat(ST.slate, { transparent: true });
+        const top = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, H / 2, 12), mat); top.position.set(x(i), y0 + H * 0.75, 0); g.add(top);
+        const bot = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, H / 2, 12), mat); bot.position.set(x(i), y0 + H * 0.25, 0); g.add(bot);
+        const cap = new THREE.Mesh(s.dot ? new THREE.SphereGeometry(0.11, 16, 12) : new THREE.TorusGeometry(0.1, 0.03, 10, 28), stMat(ST.ink));
+        cap.position.set(x(i), y0 + H + 0.22, 0); g.add(cap);
+        const num = stLabel(String(i + 1), 0.26); num.position.set(x(i), y0 - 0.26, 0.12); g.add(num);
+        return { mat, top, bot, cut: 0, botY: y0 + H * 0.25, flicker: s.flicker };
+      });
+      const pick = stPickFrame(0.5, H + 0.95, 0.5); g.add(pick);
+      return { group: g, update(now, dt, ctx) {
+        const phase = Math.floor(now / 140) % 2;
+        parts.forEach((p, i) => {
+          const isCut = pf.cut.has(i + 1), isWrong = pf.wrongCut.has(i + 1);
+          p.cut = THREE.MathUtils.lerp(p.cut, isCut || isWrong ? 1 : 0, Math.min(1, dt * 7));
+          p.bot.position.y = p.botY - p.cut * 0.16; p.bot.rotation.z = p.cut * 0.34;
+          p.top.position.y = y0 + H * 0.75 + p.cut * 0.05;
+          p.mat.color.setHex(isWrong ? ST.alert : (isCut ? ST.mute : ST.slate));
+          p.mat.opacity = (!isCut && !isWrong && p.flicker && phase) ? 0.16 : 1;
+        });
+        pick.visible = ctx.engaged;
+        if (ctx.engaged) pick.position.set(x(pf.cursor), y0 + H / 2 + 0.02, 0);
+      } };
+    }
+
+    // ---- The Resonator: the crystal flashes the pulse pattern; its ring follows the Astrophysicist's tuner. ----
+    function stageResonator() {
+      const g = new THREE.Group(); const cy = 1.3;
+      stSolid(new THREE.CylinderGeometry(0.34, 0.5, 0.24, 6), stMat(ST.paper), g, 0, 0.12, 0);
+      const crystal = new THREE.Group(); crystal.position.y = cy; crystal.scale.set(1, 1.7, 1); g.add(crystal);
+      const coreMat = new THREE.MeshBasicMaterial({ color: ST.slate });
+      crystal.add(new THREE.Mesh(new THREE.OctahedronGeometry(0.52), coreMat));
+      const wire = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.OctahedronGeometry(0.56)), stLine(ST.ink, 0.9)); crystal.add(wire);
+      const haloMat = new THREE.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0, side: THREE.DoubleSide });
+      const halo = new THREE.Mesh(new THREE.RingGeometry(1.0, 1.08, 64), haloMat); halo.position.y = cy; g.add(halo);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.05, 12, 96), stMat(0x80858f)); ring.position.y = cy; ring.rotation.x = Math.PI / 2; g.add(ring);
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.08, 12, 10), stMat(ST.ink)); dot.position.x = 1.25; ring.add(dot);
+      const tag = stLabel('PULSE CORE', 0.2); tag.position.set(0, 2.42, 0); g.add(tag);
+      let glow = 0, spin = 0;
+      return { group: g, update(now, dt, ctx) {
+        const on = !ctx.solved && pfPulseOn(now);
+        glow = THREE.MathUtils.lerp(glow, on ? 1 : 0, Math.min(1, dt * 26));
+        coreMat.color.setHex(ctx.solved ? ST.ok : ST.slate).lerp(new THREE.Color(0x67e8f9), ctx.solved ? 0 : glow);
+        haloMat.opacity = glow * 0.85; halo.scale.setScalar(1 + glow * 0.12); halo.lookAt(camera.position);
+        const live = pf.live.resonator; const f = live ? live.f : 500;
+        spin += dt * (ctx.solved ? 0.2 : 0.5 + (f - 400) / 200 * 3.2); ring.rotation.z = spin;
+        crystal.rotation.y += dt * 0.35;
+      } };
+    }
+
+    // ---- The Glyph Lock: the four glyphs on plates. Plates turn green as the Xenolinguist enters them. ----
+    function stageGlyph() {
+      const g = new THREE.Group(); const glyphs = pf.round.glyph.glyphs;
+      const plates = glyphs.map((name, i) => {
+        const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+        const tex = new THREE.CanvasTexture(c); tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false;
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.0), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
+        const x = -1.74 + i * 1.16; m.position.set(x, 1.35 + (i % 2 ? 0.0 : 0.12), Math.abs(x) * -0.18); m.rotation.y = -x * 0.16; g.add(m);
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.8, 8), stMat(ST.mute)); post.position.set(x, 0.42, Math.abs(x) * -0.18); g.add(post);
+        return { name, c, tex, drawn: '' };
+      });
+      const paint = (p, i, order) => {
+        const ctx = p.c.getContext('2d'); const lit = order > 0;
+        ctx.clearRect(0, 0, 256, 256);
+        ctx.fillStyle = 'rgba(248,250,252,0.96)'; ctx.fillRect(4, 4, 248, 248);
+        ctx.strokeStyle = lit ? '#16a34a' : '#0f172a'; ctx.lineWidth = lit ? 10 : 5; ctx.strokeRect(6, 6, 244, 244);
+        drawGlyph(ctx, p.name, 58, 62, 140, lit ? '#16a34a' : '#0f172a');
+        ctx.fillStyle = '#64748b'; ctx.font = '600 30px "JetBrains Mono", monospace'; ctx.textAlign = 'left'; ctx.fillText(String(i + 1), 20, 42);
+        if (lit) { ctx.fillStyle = '#16a34a'; ctx.textAlign = 'right'; ctx.fillText('#' + order, 238, 42); }
+        p.tex.needsUpdate = true;
+      };
+      return { group: g, update(now, dt, ctx) {
+        const answer = pf.round.glyph.answer; const live = pf.live.glyph;
+        const step = ctx.solved ? 4 : (live ? live.step : 0);
+        plates.forEach((p, i) => { const k = answer.indexOf(p.name); const order = k >= 0 && k < step ? k + 1 : 0; const key = String(order); if (key !== p.drawn) { p.drawn = key; paint(p, i, order); } });
+      } };
+    }
+
+    // ---- The Descent: the maze tilted toward you, trapdoors glowing red, and the ball as it rolls on the phone. ----
+    function stageDescent() {
+      const g = new THREE.Group(); const mz = pf.round.descent; const R0 = 1.25, K = R0 / 0.95;
+      const board = new THREE.Group(); board.position.set(0, 1.32, 0); board.rotation.x = 1.02; g.add(board);
+      const R = [0.95, 0.71, 0.47, 0.26].map(r => r * K), mid = [(R[0] + R[1]) / 2, (R[1] + R[2]) / 2, (R[2] + R[3]) / 2];
+      const clock = (r, a) => [r * Math.sin(a), -r * Math.cos(a)], rad = d => d * Math.PI / 180, t = 0.045, h = 0.08;
+      const floor = new THREE.Mesh(new THREE.CircleGeometry(R0, 72), new THREE.MeshBasicMaterial({ color: ST.navy })); floor.rotation.x = -Math.PI / 2; board.add(floor);
+      const white = stMat(ST.paper);
+      const ringShape = new THREE.Shape(); ringShape.absarc(0, 0, R0 + 0.07, 0, Math.PI * 2, false); const hole = new THREE.Path(); hole.absarc(0, 0, R0, 0, Math.PI * 2, true); ringShape.holes.push(hole);
+      const rimGeo = new THREE.ExtrudeGeometry(ringShape, { depth: h * 1.4, bevelEnabled: false, curveSegments: 64 }); rimGeo.rotateX(-Math.PI / 2); board.add(new THREE.Mesh(rimGeo, white));
+      const arc = (r, a1, a2) => { const s = new THREE.Shape(); const ta = Math.PI / 2 - a2, tb = Math.PI / 2 - a1; s.absarc(0, 0, r + t / 2, ta, tb, false); s.absarc(0, 0, r - t / 2, tb, ta, true); const geo = new THREE.ExtrudeGeometry(s, { depth: h, bevelEnabled: false, curveSegments: 10 }); geo.rotateX(-Math.PI / 2); board.add(new THREE.Mesh(geo, white)); };
+      for (let b = 0; b < 3; b++) for (let s = 0; s < 12; s++) if (!mz.gaps[b].includes(s)) arc(R[b + 1], rad(s * 30 - 15), rad(s * 30 + 15));
+      for (let i = 0; i < 3; i++) for (const b of mz.walls[i]) { const a = rad(b * 30 + 15), len = R[i] - R[i + 1], m = (R[i] + R[i + 1]) / 2; const box = new THREE.Mesh(new THREE.BoxGeometry(t, h, len), white); box.position.set(m * Math.sin(a), h / 2, -m * Math.cos(a)); box.rotation.y = Math.PI - a; board.add(box); }
+      const holeMesh = new THREE.Mesh(new THREE.CircleGeometry(0.11 * K, 32), new THREE.MeshBasicMaterial({ color: 0x05070a })); holeMesh.rotation.x = -Math.PI / 2; holeMesh.position.y = 0.004; board.add(holeMesh);
+      const traps = mz.traps.map(([ring, s]) => { const [x, z] = clock(mid[ring], rad(s * 30)); const m = new THREE.Mesh(new THREE.CircleGeometry(0.1 * K, 24), new THREE.MeshBasicMaterial({ color: ST.alert, transparent: true })); m.rotation.x = -Math.PI / 2; m.position.set(x, 0.006, z); board.add(m); return m; });
+      const [sx, sz] = clock(mid[0], rad(mz.start * 30));
+      const startMark = new THREE.Mesh(new THREE.RingGeometry(0.06 * K, 0.075 * K, 24), new THREE.MeshBasicMaterial({ color: 0xec4899, side: THREE.DoubleSide })); startMark.rotation.x = -Math.PI / 2; startMark.position.set(sx, 0.008, sz); board.add(startMark);
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(0.045 * K, 20, 14), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3, metalness: 0.1 })); ball.position.set(sx, 0.045 * K, sz); board.add(ball);
+      for (let s = 0; s < 12; s += 1) { const [x, z] = clock(R0 + 0.24, rad(s * 30)); const l = stLabel(String(s === 0 ? 12 : s), s % 3 === 0 ? 0.2 : 0.15, { bare: true, color: '#475569' }); l.position.set(x, 0.05, z); board.add(l); }
+      const target = new THREE.Vector3(sx, 0.045 * K, sz);
+      return { group: g, update(now, dt, ctx) {
+        const pulse = 0.55 + 0.45 * Math.sin(now / 240);
+        traps.forEach(m => { m.material.opacity = pulse; });
+        const live = pf.live.descent;
+        if (ctx.solved) target.set(0, -0.02, 0);
+        else if (live && Array.isArray(live.p) && now - live.at < 4000) target.set(live.p[0] * K, (live.m === 'fall' || live.m === 'won') ? -0.05 : 0.045 * K, live.p[1] * K);
+        ball.position.lerp(target, Math.min(1, dt * 14));
+      } };
+    }
+
+    // ---- The Echo Chamber: the stage's shape and four labelled pads. Pressed from here. ----
+    function stageEcho() {
+      const g = new THREE.Group(); const xs = [-1.65, -0.55, 0.55, 1.65];
+      const white = stMat(ST.paper);
+      const pads = xs.map((x, i) => {
+        const pad = stSolid(new THREE.CylinderGeometry(0.36, 0.42, 0.24, 28), white, g, x, 0.3, 0);
+        const pos = stLabel(`POS ${i + 1}`, 0.15, { bare: true, color: '#64748b' }); pos.position.set(x, 0.02, 0.5); g.add(pos);
+        return { pad, x, label: null };
+      });
+      const shapeHolder = new THREE.Group(); shapeHolder.position.set(0, 1.92, 0); g.add(shapeHolder);
+      const lights = [0, 1, 2, 3].map(i => { const m = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 10), new THREE.MeshBasicMaterial({ color: ST.mute })); m.position.set(-0.36 + i * 0.24, 2.52, 0); g.add(m); return m; });
+      const pick = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.03, 8, 48), new THREE.MeshBasicMaterial({ color: ST.pick })); pick.rotation.x = Math.PI / 2; pick.visible = false; g.add(pick);
+      const shapeGeo = (shape) => {
+        const pts = { Triangle: [[0, 0.42], [0.4, -0.3], [-0.4, -0.3]], Square: [[-0.34, -0.34], [0.34, -0.34], [0.34, 0.34], [-0.34, 0.34]] }[shape];
+        const s = new THREE.Shape();
+        if (shape === 'Circle') s.absarc(0, 0, 0.38, 0, Math.PI * 2, false);
+        else if (shape === 'Cross') { const a = 0.12, b = 0.4; [[-a, b], [a, b], [a, a], [b, a], [b, -a], [a, -a], [a, -b], [-a, -b], [-a, -a], [-b, -a], [-b, a], [-a, a]].forEach(([x, y], i) => (i ? s.lineTo(x, y) : s.moveTo(x, y))); s.closePath(); }
+        else { pts.forEach(([x, y], i) => (i ? s.lineTo(x, y) : s.moveTo(x, y))); s.closePath(); }
+        const geo = new THREE.ExtrudeGeometry(s, { depth: 0.1, bevelEnabled: false, curveSegments: 32 }); geo.center(); return geo;
+      };
+      let drawn = '';
+      return { group: g, update(now, dt, ctx) {
+        const st = Math.min(4, pf.echoStage), S = pf.echoStages[st - 1];
+        const key = `${st}|${pf.echoAttempt}|${ctx.solved ? 1 : 0}`;
+        if (key !== drawn) {
+          drawn = key;
+          while (shapeHolder.children.length) { const o = shapeHolder.children[0]; shapeHolder.remove(o); stDispose(o); }
+          stSolid(shapeGeo(S.shape), stMat(ctx.solved ? ST.ok : ST.paper), shapeHolder);
+          pads.forEach((p, i) => {
+            if (p.label) { g.remove(p.label); stDispose(p.label); }
+            p.label = stLabel(String(S.labels[i]), 0.5, { color: ctx.solved ? '#16a34a' : '#0f172a' }); p.label.position.set(p.x, 0.92, 0); g.add(p.label);
+            p.pad.scale.y = 0.4;
+          });
+        }
+        pads.forEach(p => { p.pad.scale.y = THREE.MathUtils.lerp(p.pad.scale.y, 1, Math.min(1, dt * 8)); });
+        shapeHolder.rotation.y = Math.sin(now / 1400) * 0.5;
+        lights.forEach((l, i) => l.material.color.setHex(ctx.solved || i + 1 < pf.echoStage ? ST.ok : (i + 1 === pf.echoStage ? ST.ink : ST.mute)));
+        pick.visible = ctx.engaged;
+        if (ctx.engaged) pick.position.set(xs[pf.cursor], 0.46, 0);
+      } };
+    }
+
+    // ---- The Pressure Vent: three gauges. Levels only show while the alarm is live. ----
+    function stageVent() {
+      const g = new THREE.Group(); const xs = [-1.3, 0, 1.3], names = ['LEFT', 'CENTRE', 'RIGHT'], HG = 1.7, y0 = 0.36;
+      const cols = xs.map((x, i) => {
+        const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, HG, 28, 1, true), new THREE.MeshStandardMaterial({ color: 0xcbd5e1, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }));
+        glass.position.set(x, y0 + HG / 2, 0); g.add(glass);
+        glass.add(new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.CylinderGeometry(0.3, 0.3, HG, 28, 1, true), 25), stLine(ST.ink, 0.6)));
+        stSolid(new THREE.CylinderGeometry(0.36, 0.4, 0.1, 28), stMat(ST.paper), g, x, y0 - 0.05, 0);
+        const bars = [0, 1, 2, 3, 4].map(k => { const b = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, HG / 5 - 0.07, 20), new THREE.MeshBasicMaterial({ color: ST.amber })); b.position.set(x, y0 + (k + 0.5) * HG / 5, 0); b.visible = false; g.add(b); return b; });
+        const name = stLabel(names[i], 0.2); name.position.set(x, y0 - 0.34, 0.2); g.add(name);
+        return { bars };
+      });
+      const halo = new THREE.Mesh(new THREE.TorusGeometry(2.25, 0.03, 8, 96), new THREE.MeshBasicMaterial({ color: ST.amber, transparent: true, opacity: 0 })); halo.rotation.x = Math.PI / 2; halo.position.y = 0.12; g.add(halo);
+      let tag = null, drawn = '';
+      return { group: g, update(now, dt, ctx) {
+        const v = pfVent(); const on = !!v;
+        const left = on ? Math.max(0, Math.ceil((v.endsAt - (Date.now() + Net.offset)) / 1000)) : 0;
+        const key = on ? `a${v.index}|${left}` : 'dormant';
+        if (key !== drawn) {
+          drawn = key;
+          if (tag) { g.remove(tag); stDispose(tag); }
+          tag = on ? stLabel(`VENT NOW  0:${String(left).padStart(2, '0')}`, 0.3, { color: '#b45309', border: '#b45309' }) : stLabel('DORMANT', 0.22, { color: '#64748b' });
+          tag.position.set(0, y0 + HG + 0.42, 0); g.add(tag);
+          const levels = on ? ventGaugesFor(pf.code, v.index) : [0, 0, 0];
+          cols.forEach((c, i) => c.bars.forEach((b, k) => { b.visible = k < levels[i]; }));
+        }
+        halo.material.opacity = on ? 0.35 + 0.45 * Math.abs(Math.sin(now / 260)) : 0;
+      } };
+    }
+
+    // ---- nodes that arrive in a later build ----
+    function stageSoon() {
+      const g = new THREE.Group();
+      const w = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.OctahedronGeometry(0.8)), stLine(ST.mute, 0.8)); w.position.y = 1.3; g.add(w);
+      const tag = stLabel('NOT INSTALLED', 0.24, { color: '#64748b' }); tag.position.set(0, 0.3, 0); g.add(tag);
+      return { group: g, update(now, dt) { w.rotation.y += dt * 0.4; } };
+    }
+    const PF_STAGE = { conduits: stageConduits, resonator: stageResonator, glyph: stageGlyph, descent: stageDescent, echo: stageEcho, vent: stageVent, starmap: stageSoon, dice: stageSoon };
+    const pfStage = { group: null, key: null, obj: null, shownAt: 0, zoom: 1.1 };
+    function pfVent() { const s = Net.state; return pfLinked() && s.phase === 'live' && s.vent && s.vent.active ? s.vent : null; }
+    function pfStageFrame(now, dt) {
+      if (!pfStage.group) {
+        pfStage.group = new THREE.Group();
+        pfStage.group.position.set(POLAR_ORIGIN.x, POLAR_ORIGIN.y + 1.15, POLAR_ORIGIN.z);
+        scene.add(pfStage.group);
+      }
+      const ready = !tutorialState.active && transitionState.phase === 'NONE' && screenWallGroup.visible && pf.round;
+      const center = ready ? backScreenCards.find(sc => sc.bayIdx === 2) : null;
+      const cfg = center ? cardConfigs.find(c => c.id === center.orbId) : null;
+      const node = cfg ? cfg.node : null;
+      const key = node ? `${node}|${pf.code}|${pf.gen}` : null;
+      if (key !== pfStage.key) {
+        if (pfStage.obj) { pfStage.group.remove(pfStage.obj.group); stDispose(pfStage.obj.group); }
+        pfStage.key = key; pfStage.obj = node ? PF_STAGE[node]() : null; pfStage.shownAt = now;
+        if (pfStage.obj) pfStage.group.add(pfStage.obj.group);
+      }
+      // The planetary core steps aside while a puzzle is on the stage
+      if (transitionState.phase === 'NONE' && !tutorialState.active) coreGroup.visible = !pfStage.obj;
+      if (!pfStage.obj) return;
+      const p = Math.min(1, (now - pfStage.shownAt) / 520), e = 1 - Math.pow(1 - p, 3);
+      pfStage.zoom = THREE.MathUtils.lerp(pfStage.zoom, coreState.targetExplode > 0.5 ? 1.32 : 1.1, Math.min(1, dt * 6));
+      pfStage.group.scale.set(pfStage.zoom, Math.max(0.02, e) * pfStage.zoom, pfStage.zoom);
+      pfStage.obj.update(now, dt, { engaged: pf.engaged === node, solved: pfNodeSolved(node) });
     }
 
     class SpatialHapticSynth {
@@ -2197,14 +2491,16 @@ function drawGlyph(ctx, name, x, y, size, color) {
     const guideArcLine = pedestalOrbRingLine;
     const detentTicks = new THREE.Group();
     // 6 Orbs sequentially ordered (01 to 06) at clean 60-degree intervals around the pedestal
-    const ORB_STEP_ANGLE = (Math.PI * 2) / 6;
+    const ORB_STEP_ANGLE = (Math.PI * 2) / 8;
     const cardConfigs = [
       { id: 'books',   node: 'conduits',  title: '01', subtitle: 'THE CONDUITS',      metric: 'ASTROPHYSICIST NODE', icon: 'books',  baseAngle: 0 * ORB_STEP_ANGLE, accent: '#22c55e' },
       { id: 'photos',  node: 'resonator', title: '02', subtitle: 'THE RESONATOR',     metric: 'ASTROPHYSICIST NODE', icon: 'photos', baseAngle: 1 * ORB_STEP_ANGLE, accent: '#0ea5e9' },
       { id: 'music',   node: 'glyph',     title: '03', subtitle: 'THE GLYPH LOCK',    metric: 'XENOLINGUIST NODE',   icon: 'music',  baseAngle: 2 * ORB_STEP_ANGLE, accent: '#f59e0b' },
       { id: 'home',    node: 'descent',   title: '04', subtitle: 'THE DESCENT',       metric: 'XENOLINGUIST NODE',   icon: 'home',   baseAngle: 3 * ORB_STEP_ANGLE, accent: '#ec4899' },
       { id: 'core',    node: 'echo',      title: '05', subtitle: 'THE ECHO CHAMBER',  metric: 'XENOLINGUIST NODE',   icon: 'core',   baseAngle: 4 * ORB_STEP_ANGLE, accent: '#8b5cf6' },
-      { id: 'archive', node: 'vent',      title: '06', subtitle: 'THE PRESSURE VENT', metric: 'INTERRUPT NODE',      icon: 'books',  baseAngle: 5 * ORB_STEP_ANGLE, accent: '#10b981' }
+      { id: 'archive', node: 'vent',      title: '06', subtitle: 'THE PRESSURE VENT', metric: 'INTERRUPT NODE',      icon: 'books',  baseAngle: 5 * ORB_STEP_ANGLE, accent: '#10b981' },
+      { id: 'starmap', node: 'starmap',   title: '07', subtitle: 'THE STAR MAP',      metric: 'NEXT BUILD',          icon: 'core',   baseAngle: 6 * ORB_STEP_ANGLE, accent: '#64748b' },
+      { id: 'dice',    node: 'dice',      title: '08', subtitle: 'THE DICE VAULT',    metric: 'NEXT BUILD',          icon: 'core',   baseAngle: 7 * ORB_STEP_ANGLE, accent: '#64748b' }
     ];
 
     function drawMinimalNodeIcon(ctx, type, cx, cy, s) {
@@ -2276,7 +2572,8 @@ function drawGlyph(ctx, name, x, y, size, color) {
 
       const stateMode = isViewing ? 'VIEWING' : (isSelected ? 'SELECTED' : 'NEUTRAL');
       const nodeOpen = pfNodeSolved(card.node);
-      const cardSig = `${stateMode}|${hasPinnedScreen ? 1 : 0}|${nodeOpen ? 1 : 0}`;
+      const nodeAlarm = card.node === 'vent' && !!pfVent();
+      const cardSig = `${stateMode}|${hasPinnedScreen ? 1 : 0}|${nodeOpen ? 1 : 0}|${nodeAlarm ? 1 : 0}`;
       card.visualState = stateMode;
       if (card.lastDrawSig === cardSig) return;
       card.lastDrawSig = cardSig;
@@ -2391,6 +2688,20 @@ function drawGlyph(ctx, name, x, y, size, color) {
         ctx.fillText(card.title, cx, cy);
       }
 
+      if (nodeAlarm) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius + 10, 0, Math.PI * 2);
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 16;
+        ctx.stroke();
+        ctx.fillStyle = '#f59e0b';
+        ctx.fillRect(cx - 62, cy + radius - 30, 124, 34);
+        ctx.fillStyle = '#0f172a';
+        ctx.font = '600 20px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('ALARM', cx, cy + radius - 13);
+      }
       if (nodeOpen) {
         ctx.beginPath();
         ctx.arc(cx, cy, radius + 8, 0, Math.PI * 2);
@@ -2690,7 +3001,7 @@ function drawGlyph(ctx, name, x, y, size, color) {
               frontCard = c;
             }
           });
-          if (frontCard && minAngleDist < 0.48) {
+          if (frontCard && minAngleDist < 0.36) {
             const snapDelta = Math.atan2(Math.sin(-frontCard.baseAngle - carouselState.rotation), Math.cos(-frontCard.baseAngle - carouselState.rotation));
             carouselState.rotation += snapDelta * dt * 4.2;
             if (selectedCardId !== frontCard.id && minAngleDist < 0.18) {
@@ -4263,7 +4574,7 @@ function drawGlyph(ctx, name, x, y, size, color) {
       if (code) pfJoin(code); else { pfLoadRound(0); pfLinkUi(); }
       if (PINCH_CAL.at) pushLog('[CAL] saved pinch calibration loaded // [T] recalibrates');
       // read-only handle for debugging and automated tests
-      window.__aether = { pf, Net, echoPress, get selectedOrb() { return selectedCardId; }, get carousel() { return carouselState; }, get phase() { return transitionState.phase; } };
+      window.__aether = { pf, Net, echoPress, get selectedOrb() { return selectedCardId; }, get carousel() { return carouselState; }, get phase() { return transitionState.phase; }, get orbCount() { return hudCards.length; } };
     })();
 
     let lastFrameTime = performance.now();
