@@ -1,0 +1,1910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Project Aether field instruments</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #EEF0F2; --grid: rgba(27,34,48,.065); --surface: #FFFFFF; --surface-2: #F4F5F7; --ink: #1B2230; --ink-2: #5A6372; --ink-3: #8A929E;
+  --line: #D3D8DE; --ok: #138A50; --alert: #D2386B; --glow: #1B2230; --cyan: #1B2230; --magenta: #D2386B; --green: #138A50;
+  --glass: rgba(255,255,255,.93); --glass-ink: #1B2230; --scrim: rgba(27,34,48,.35);
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --font-ui: var(--font-sans); --font-body: var(--font-sans);
+  color-scheme: light;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1218; --grid: rgba(232,236,241,.05); --surface: #161B24; --surface-2: #1C2230; --ink: #E8ECF1; --ink-2: #A3ACB8; --ink-3: #6E7785;
+    --line: #2C3442; --ok: #3CC37E; --alert: #F0628F; --glow: #E8ECF1; --cyan: #E8ECF1; --magenta: #F0628F; --green: #3CC37E;
+    --glass: rgba(22,27,36,.93); --glass-ink: #E8ECF1; --scrim: rgba(0,0,0,.55);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E1218; --grid: rgba(232,236,241,.05); --surface: #161B24; --surface-2: #1C2230; --ink: #E8ECF1; --ink-2: #A3ACB8; --ink-3: #6E7785;
+  --line: #2C3442; --ok: #3CC37E; --alert: #F0628F; --glow: #E8ECF1; --cyan: #E8ECF1; --magenta: #F0628F; --green: #3CC37E;
+  --glass: rgba(22,27,36,.93); --glass-ink: #E8ECF1; --scrim: rgba(0,0,0,.55);
+  color-scheme: dark;
+}
+*, *::before, *::after { box-sizing: inherit; }
+html { height: 100%; scroll-padding-top: env(safe-area-inset-top, 0px); }
+body {
+  margin: 0; min-height: 100%; color: var(--ink); font: 400 16px/1.55 var(--font-sans); -webkit-text-size-adjust: 100%;
+  background-color: var(--bg);
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 44px 44px; background-position: center top;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 50; background: var(--bg); }
+body[data-view="field"]::before { background: var(--glass); }
+body.toasting .status { visibility: hidden; }
+[hidden] { display: none !important; }
+h1, h2, h3 { font-family: var(--font-sans); font-weight: 300; line-height: 1.12; letter-spacing: -0.01em; margin: 0; }
+a { color: var(--ink); text-underline-offset: 3px; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.kicker { margin: 0; font: 500 11px/1.4 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
+.kicker.ruled { display: flex; align-items: center; gap: 12px; }
+.kicker.ruled::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.mono { font-family: var(--font-mono); }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: .5em; min-height: 44px; padding: 0 16px;
+  border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  font: 500 12px/1.2 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; text-decoration: none; cursor: pointer; text-align: center;
+}
+.btn:hover { border-color: var(--ink-2); }
+.btn.primary { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.btn.ghost { background: var(--surface); }
+.btn.small { min-height: 40px; padding: 0 12px; font-size: 11px; }
+.btn.wide { width: 100%; }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+
+/* ---------- Home ---------- */
+.home { max-width: 560px; margin: 0 auto; padding: 36px 22px 48px; }
+.home-head { display: grid; grid-template-columns: 1fr 88px; gap: 14px 18px; align-items: start; }
+.home-head .kicker { grid-column: 1 / -1; }
+.home-head .mark { width: 88px; height: 88px; grid-column: 2; grid-row: 2 / span 2; color: var(--ink); }
+.home-head h1 { font-size: 40px; grid-column: 1; }
+.home-head .sub { margin: 0; color: var(--ink-2); grid-column: 1; max-width: 32ch; }
+.round-row { margin: 36px 0 24px; }
+.round-row label { display: block; margin-bottom: 10px; }
+.round-ctl { display: flex; gap: 10px; }
+.round-ctl input { width: 6.6ch; min-height: 52px; padding: 0 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: 500 28px/1 var(--font-mono); letter-spacing: .12em; }
+.hint { margin: 10px 0 0; color: var(--ink-3); font: 500 11px/1.4 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
+.roles { display: grid; gap: 12px; }
+.role { position: relative; display: grid; gap: 6px; padding: 18px 64px 18px 18px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); text-decoration: none; color: var(--ink); }
+.role:hover { border-color: var(--ink-2); }
+.role::after { content: ""; position: absolute; right: 20px; top: 50%; width: 26px; height: 26px; margin-top: -13px; border-radius: 50%; border: 3px solid var(--ink-3); }
+.role[data-role="astro"]::after { border-color: var(--alert); }
+.role-name { font: 300 28px/1.1 var(--font-sans); letter-spacing: -0.01em; }
+.role-job { color: var(--ink-2); font-size: 15px; }
+.home-links { display: flex; flex-wrap: wrap; gap: 10px 24px; margin-top: 26px; }
+.home-links a { font: 500 12px/1.4 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
+
+/* ---------- Field ---------- */
+.cam-stage {
+  position: fixed; inset: 0; overflow: hidden; touch-action: none;
+  background-color: var(--bg); background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px); background-size: 44px 44px; background-position: center;
+}
+.cam-stage video, .cam-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+#reticle { position: absolute; left: 50%; top: 46%; width: min(64vw, 300px); height: min(64vw, 300px); transform: translate(-50%, -50%); color: #FFFFFF; opacity: .85; pointer-events: none; filter: drop-shadow(0 0 1px rgba(0,0,0,.5)); }
+#reticle .ring { transform-origin: 0 0; animation: spin 14s linear infinite; }
+#reticle.locked { color: #2FD08A; opacity: 1; }
+#reticle.locked .ring { animation-play-state: paused; }
+@keyframes spin { to { transform: rotate(360deg); } }
+body.holo #reticle { display: none; }
+body.holo .sheet { max-height: 62%; }
+body.preview #cam, body.preview #overlay { visibility: hidden; }
+.field-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 20; display: flex; align-items: center; gap: 12px; padding: calc(env(safe-area-inset-top, 0px) + 10px) 14px 10px; background: var(--glass); color: var(--glass-ink); border-bottom: 1px solid var(--line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.icon-btn { width: 40px; height: 40px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); display: grid; place-items: center; cursor: pointer; }
+.who { flex: 1; display: flex; flex-direction: column-reverse; gap: 2px; line-height: 1.15; min-width: 0; }
+.who strong { font: 300 22px/1.1 var(--font-sans); letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 430px) { .field-bar .strikes::before { display: none; } .field-bar .who strong { font-size: 19px; } }
+.who span { font: 500 10px/1.3 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
+.strikes { display: flex; align-items: center; gap: 5px; }
+.strikes::before { content: "Strikes"; font: 500 10px/1 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); margin-right: 4px; }
+.strikes i { width: 12px; height: 12px; border-radius: 2px; border: 1px solid var(--ink-2); }
+.strikes i.on { background: var(--alert); border-color: var(--alert); }
+.status { position: fixed; left: 14px; right: 14px; margin: 0 auto; width: fit-content; max-width: calc(100% - 28px); top: calc(env(safe-area-inset-top, 0px) + 74px); z-index: 15; display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 6px; background: var(--glass); color: var(--glass-ink); border: 1px solid var(--line); font: 500 11px/1.4 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; text-align: center; }
+.status::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); }
+.status[data-state="ok"]::before { background: var(--ok); }
+.status[data-state="wait"]::before { background: var(--alert); }
+.start-cam { position: fixed; left: 16px; right: 16px; top: 50%; transform: translateY(-50%); z-index: 25; max-width: 420px; margin: 0 auto; padding: 22px 20px 20px; border-radius: 8px; border: 1px solid var(--line); background: var(--glass); color: var(--glass-ink); display: grid; gap: 12px; text-align: center; }
+.start-cam h2 { font-size: 28px; }
+.start-cam p { margin: 0; color: var(--ink-2); font-size: 15px; }
+.start-cam .req { font: 500 10px/1.5 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+.start-cam .err { color: var(--alert); font-weight: 600; }
+.tray { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; align-items: center; gap: 10px; padding: 10px 14px calc(env(safe-area-inset-bottom, 0px) + 12px); background: var(--glass); color: var(--glass-ink); border-top: 1px solid var(--line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.chips { flex: 1; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+.chips:empty::before { content: "Scanned nodes appear here"; color: var(--ink-3); font: 500 10px/1.4 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; align-self: center; }
+.chip { flex: none; display: inline-flex; align-items: center; gap: 8px; min-height: 38px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: 500 11px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
+.chip::before { content: ""; width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--ink-2); }
+.chip.solved::before { background: var(--ok); border-color: var(--ok); }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; max-height: 84%; display: flex; flex-direction: column; background: var(--surface); color: var(--ink); border-top: 1px solid var(--line); border-radius: 10px 10px 0 0; box-shadow: 0 -12px 40px rgba(27,34,48,.12); padding-bottom: env(safe-area-inset-bottom, 0px); animation: rise .2s ease-out; }
+@keyframes rise { from { transform: translateY(24px); opacity: .4; } }
+.sheet-head { display: flex; align-items: flex-start; gap: 12px; padding: 16px 18px 12px; border-bottom: 1px solid var(--line); }
+.sheet-head > div { flex: 1; display: grid; gap: 6px; }
+.sheet-slot { margin: 0; font: 500 10px/1.4 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
+.sheet-head h2 { font-size: 28px; }
+.sheet-body { overflow-y: auto; padding: 16px 18px 26px; }
+.sheet-body h3 { font: 500 11px/1.4 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); margin: 24px 0 10px; display: flex; align-items: center; gap: 10px; }
+.sheet-body h3::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.sheet-body h3:first-child { margin-top: 0; }
+.sheet-body p { margin: 0 0 10px; max-width: 62ch; }
+.lead { font-size: 16px; }
+.muted { color: var(--ink-2); }
+.done-note { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--ok); color: var(--ok); font: 500 11px/1.4 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; margin: 0 0 14px; }
+.done-note::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; }
+table.rule { border-collapse: collapse; width: 100%; font-size: 15px; }
+table.rule th, table.rule td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.rule th { font: 500 10px/1.3 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); }
+table.rule tbody tr:last-child td { border-bottom: 0; }
+.scroll-x { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; }
+.swatch { display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: -1px; margin-right: 8px; }
+.formula { padding: 10px 12px; border-left: 2px solid var(--ink); background: var(--surface-2); border-radius: 0 6px 6px 0; margin: 0 0 12px; }
+.strands { width: 100%; height: 150px; display: block; margin: 4px 0 10px; }
+.pulse { display: inline-flex; gap: 5px; align-items: center; }
+.pulse i { display: inline-block; height: 8px; border-radius: 4px; background: var(--ink); }
+.pulse i.s { width: 10px; } .pulse i.l { width: 30px; }
+.tuner { margin-top: 18px; padding: 16px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-2); display: grid; gap: 12px; }
+.readout { display: flex; align-items: baseline; gap: 10px; }
+.readout output { font: 400 52px/1 var(--font-mono); letter-spacing: .02em; }
+.readout span { font: 500 10px/1 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
+.tuner input[type=range] { width: 100%; accent-color: var(--ink); height: 34px; }
+.nudge { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.orders { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 6px; }
+.orders figure { margin: 0; text-align: center; }
+.orders svg { width: 100%; aspect-ratio: 1; display: block; }
+.orders figcaption { font: 500 10px/1.2 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; margin-top: 6px; color: var(--ink-2); }
+.keypad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.key { position: relative; display: grid; justify-items: center; gap: 6px; padding: 10px 4px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; color: var(--ink); }
+.key svg { width: 40px; height: 40px; }
+.key span { font: 500 9px/1.2 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; text-align: center; color: var(--ink-2); }
+.key.lit { border-color: var(--ok); color: var(--ok); }
+.key.lit span { color: var(--ok); }
+.key.lit::after { content: attr(data-n); position: absolute; top: 4px; right: 6px; font: 600 12px/1 var(--font-mono); color: var(--ok); }
+.key.miss { animation: shake .3s; border-color: var(--alert); }
+@keyframes shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+.shape { width: 20px; height: 20px; vertical-align: -5px; margin-right: 8px; }
+.ar-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 22; display: grid; gap: 10px; padding: 12px 14px calc(env(safe-area-inset-bottom, 0px) + 12px); background: var(--glass); color: var(--glass-ink); border-top: 1px solid var(--line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.ar-bar .row { display: flex; gap: 8px; align-items: center; }
+.ar-bar .row .grow { flex: 1; }
+.ar-help { margin: 0; font-size: 14px; color: var(--ink-2); }
+.ar-help::before { content: "Controls // "; font: 500 10px/1 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink); }
+.flat { position: fixed; inset: 0; z-index: 40; overflow-y: auto; background: var(--bg); color: var(--ink); padding: calc(env(safe-area-inset-top, 0px) + 16px) 18px calc(env(safe-area-inset-bottom, 0px) + 24px); }
+.flat-inner { max-width: 520px; margin: 0 auto; display: grid; gap: 14px; }
+.flat-head { display: flex; align-items: center; gap: 12px; }
+.flat-head h2 { flex: 1; font-size: 28px; }
+.maze-svg { width: 100%; max-width: 480px; justify-self: center; display: block; }
+.map-wrap { max-width: 320px; margin: 4px auto 6px; }
+.mz-floor { fill: #2B3446; }
+.mz-ball { fill: #fff; stroke: #D2386B; stroke-width: 1.6; }
+.mz-wall { fill: none; stroke: #F3F5F7; stroke-width: 2.6; stroke-linecap: round; }
+.mz-core { fill: #07090D; stroke: #F3F5F7; stroke-width: 1.2; }
+.mz-num { fill: var(--ink-2); font: 500 7px var(--font-mono); text-anchor: middle; dominant-baseline: central; }
+dialog { border: 1px solid var(--line); border-radius: 8px; padding: 20px; background: var(--surface); color: var(--ink); width: min(92vw, 380px); }
+dialog::backdrop { background: var(--scrim); }
+dialog h2 { font-size: 24px; margin-bottom: 14px; }
+.shard-pick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 14px; }
+.shard-pick .btn { font-size: 18px; min-height: 52px; }
+.toast { position: fixed; left: 14px; right: 14px; margin: 0 auto; width: fit-content; max-width: calc(100% - 28px); top: calc(env(safe-area-inset-top, 0px) + 72px); z-index: 45; padding: 10px 14px 10px 16px; border-radius: 6px; border: 1px solid var(--line); border-left: 3px solid var(--ink); background: var(--surface); color: var(--ink); font: 400 14px/1.4 var(--font-sans); box-shadow: 0 8px 24px rgba(27,34,48,.14); }
+.toast.bad { border-left-color: var(--alert); }
+.toast.good { border-left-color: var(--ok); }
+.flash { position: fixed; inset: 0; z-index: 44; pointer-events: none; background: var(--alert); opacity: 0; }
+.flash.go { animation: flash .5s ease-out; }
+@keyframes flash { 0% { opacity: .35; } 100% { opacity: 0; } }
+.lost { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: var(--scrim); padding: 24px; }
+.lost > div { max-width: 360px; padding: 24px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); text-align: center; display: grid; gap: 12px; }
+.lost h2 { font-size: 34px; color: var(--alert); }
+.lost p { margin: 0; color: var(--ink-2); }
+
+/* ---------- Shards ---------- */
+.paper { max-width: 900px; margin: 0 auto; padding: 32px 20px 48px; }
+.paper-head { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: end; justify-content: space-between; margin-bottom: 22px; }
+.paper-head > div:first-child { display: grid; gap: 10px; }
+.paper-head h1 { font-size: 36px; }
+.paper-head p { margin: 0; color: var(--ink-2); max-width: 52ch; }
+.shard-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.shard-card { background: #fff; color: #1B2230; border-radius: 8px; border: 1px solid #D3D8DE; padding: 18px; display: grid; gap: 8px; justify-items: center; break-inside: avoid; }
+.shard-card .qr { width: 80mm; max-width: 100%; height: auto; display: block; }
+.shard-card h2 { font-size: 30px; }
+.shard-card p { margin: 0; font: 500 10px/1.3 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; color: #5A6372; }
+@media print {
+  @page { size: A4; margin: 12mm; }
+  body { background: #fff; }
+  body::before, .no-print { display: none !important; }
+  :root { padding: 0; }
+  .paper { padding: 0; max-width: none; }
+  .shard-grid { grid-template-columns: 1fr 1fr; gap: 8mm; }
+  .shard-card { border: .4mm dashed #9AA9B1; border-radius: 4mm; }
+  .shard-card:nth-child(4n) { break-after: page; }
+}
+
+/* ---------- Test sheet ---------- */
+.test-sec { margin-top: 28px; }
+.test-sec h2 { font-size: 26px; margin-bottom: 4px; }
+.test-sec > p { margin: 0 0 10px; color: var(--ink-2); }
+.test-card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-top: 12px; }
+.test-card h3 { font: 500 11px/1.4 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 10px; }
+.test-card dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; }
+.test-card dt { color: var(--ink-2); }
+.test-card dd { margin: 0; font-weight: 600; }
+details { margin-top: 10px; }
+summary { cursor: pointer; font: 500 11px/1.4 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink); }
+.glyph-row { display: flex; gap: 14px; flex-wrap: wrap; }
+.glyph-row svg { width: 50px; height: 50px; }
+.cells { display: inline-flex; gap: 6px; vertical-align: middle; }
+.cells i { width: 12px; height: 24px; border-radius: 3px; border: 1px solid var(--ink-2); }
+.cells i.on { background: var(--ink); border-color: var(--ink); }
+
+/* ---------- Live room ---------- */
+.clock { font: 500 15px/1 var(--font-mono); letter-spacing: .06em; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.clock.alert { color: var(--alert); border-color: var(--alert); }
+.role.soon { opacity: .55; cursor: default; }
+.role[data-role="director"]::after { border-color: var(--ink); border-style: solid; border-radius: 4px; }
+.role.soon::after { border-style: dashed; }
+.lost.won h2 { color: var(--ok); }
+.console { max-width: 1280px; margin: 0 auto; padding: 18px 20px 40px; }
+.console-head { display: flex; align-items: center; gap: 16px; padding: 10px 0 16px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+.console-head .icon-btn { text-decoration: none; }
+.dir-clock { font: 400 44px/1 var(--font-mono); letter-spacing: .04em; }
+.dir-clock.alert { color: var(--alert); }
+.console-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+@media (min-width: 1000px) { .console-grid { grid-template-columns: 330px 1fr 380px; align-items: start; } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+.panel > .kicker.ruled { margin-bottom: 12px; }
+.join { display: grid; grid-template-columns: 132px 1fr; gap: 14px; align-items: start; }
+.join-qr svg { width: 132px; height: auto; display: block; border: 1px solid var(--line); border-radius: 6px; }
+.big-code { margin: 2px 0 6px; font: 500 46px/1 var(--font-mono); letter-spacing: .12em; }
+.crew { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.crew li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; font: 500 12px/1.3 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+.crew li::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); flex: none; }
+.crew li.on::before { background: var(--ok); }
+.crew li span { margin-left: auto; color: var(--ink-3); font-size: 10px; }
+.control-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.control-row .grow { flex: 1; }
+.control-row select { min-height: 40px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font: 500 13px var(--font-mono); }
+.phase { font: 500 11px/1 var(--font-mono); letter-spacing: .14em; text-transform: uppercase; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line); margin-right: auto; }
+.phase[data-phase="live"] { color: var(--ok); border-color: var(--ok); }
+.phase[data-phase="lost"] { color: var(--alert); border-color: var(--alert); }
+.phase[data-phase="won"] { color: var(--ok); border-color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, var(--surface)); }
+.status-dot { display: inline-flex; align-items: center; gap: 8px; font: 500 10px/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+.status-dot::before { content: ""; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--ink-3); }
+.status-dot.done { color: var(--ok); }
+.status-dot.done::before { background: var(--ok); border-color: var(--ok); }
+.hull { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.hull label { display: grid; gap: 6px; }
+.hull input { min-height: 42px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); font: 500 15px var(--font-mono); }
+.log { list-style: none; margin: 0; padding: 0; max-height: 62vh; overflow-y: auto; display: grid; gap: 2px; }
+.log li { font: 400 12px/1.5 var(--font-mono); color: var(--ink-2); padding: 4px 0; border-bottom: 1px dashed var(--line); }
+.log li b { color: var(--ink); font-weight: 600; }
+.log:empty::before { content: "Waiting for the crew"; font: 500 10px/1.4 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+.offline-note { margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--alert); border-radius: 6px; color: var(--alert); font: 500 11px/1.5 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+@media (prefers-reduced-motion: reduce) {
+  #reticle .ring { animation: none; }
+  .sheet { animation: none; }
+  .flash.go { animation: none; }
+}
+</style>
+</head>
+<body data-view="home">
+
+<main id="view-home" class="view home">
+  <header class="home-head">
+    <p class="kicker ruled">Project Aether // Field instruments</p>
+    <svg class="mark" viewBox="-50 -50 100 100" aria-hidden="true">
+      <circle r="42" fill="none" stroke="#80858F" stroke-width="6"/>
+      <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+        <path d="M0 -30 L-20 -2 L0 30 L20 2 Z"/><path d="M0 -30 L-6 6 L0 30 M-20 -2 L-6 6 L20 2 M0 -30 L7 -7 L0 30 M-20 -2 L7 -7 L20 2" opacity=".7"/>
+      </g>
+      <g fill="currentColor"><circle cx="0" cy="-30" r="2.6"/><circle cx="0" cy="30" r="2.6"/><circle cx="-20" cy="-2" r="2.6"/><circle cx="20" cy="2" r="2.6"/><circle cx="-6" cy="6" r="2.2"/><circle cx="7" cy="-7" r="2.2"/></g>
+    </svg>
+    <h1>Choose your specialist</h1>
+    <p class="sub">Scan a shard, read its rule, talk it through with the crew.</p>
+  </header>
+  <div class="round-row">
+    <label for="round-input" class="kicker ruled">Round number</label>
+    <div class="round-ctl">
+      <input id="round-input" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="0000">
+      <button id="new-round" class="btn ghost" type="button">New round</button>
+    </div>
+    <p class="hint">Required: the whole crew uses the same number</p>
+  </div>
+  <div class="roles">
+    <a class="role" href="#xenolinguist" data-role="xeno">
+      <span class="kicker">Specialist 01 // Phone</span>
+      <span class="role-name">Xenolinguist</span>
+      <span class="role-job">Symbols, mazes and memory: the Glyph Lock, the Descent and the Echo Chamber.</span>
+    </a>
+    <a class="role" href="#astrophysicist" data-role="astro">
+      <span class="kicker">Specialist 02 // Phone</span>
+      <span class="role-name">Astrophysicist</span>
+      <span class="role-job">Energy, signals and pressure: the Conduits, the Resonator and the Pressure Vent.</span>
+    </a>
+    <a class="role" href="#director" data-role="director">
+      <span class="kicker">Mission control // Laptop</span>
+      <span class="role-name">Flight Director</span>
+      <span class="role-job">Opens the room for the crew: join code, timer, strikes, the shard directory and the comms log.</span>
+    </a>
+    <div class="role soon" data-role="pathfinder" aria-disabled="true">
+      <span class="kicker">Neural diver // Headset // In development</span>
+      <span class="role-name">Pathfinder</span>
+      <span class="role-job">Inside the Monolith: sees every node and acts on them.</span>
+    </div>
+  </div>
+  <nav class="home-links">
+    <a href="#shards">Print the shards</a>
+    <a href="#test">Open the test sheet</a>
+  </nav>
+</main>
+
+<section id="view-field" class="view" hidden>
+  <div class="cam-stage">
+    <video id="cam" playsinline muted autoplay></video>
+    <canvas id="ar" aria-hidden="true"></canvas>
+    <canvas id="overlay" aria-hidden="true"></canvas>
+    <svg id="reticle" viewBox="-60 -60 120 120" aria-hidden="true">
+      <g class="ring" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" id="reticle-ticks"></g>
+    </svg>
+  </div>
+  <header class="field-bar">
+    <button id="exit" class="icon-btn" type="button" aria-label="Leave the field">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 4 7 10l6 6"/></svg>
+    </button>
+    <div class="who"><strong id="role-name">Specialist</strong><span id="round-label"></span></div>
+    <div class="clock" id="clock" hidden></div>
+    <div class="strikes" id="strikes" aria-label="Strikes: 0 of 3"><i></i><i></i><i></i></div>
+  </header>
+  <div id="status" class="status" role="status" hidden></div>
+  <div id="start-cam" class="start-cam">
+    <p class="kicker">Optical sensor // Shard scanner</p>
+    <h2>Start the scanner</h2>
+    <p id="cam-msg">Allow camera access when your phone asks.</p>
+    <p class="req">Required: camera permission, or enter a shard number</p>
+    <button id="start-btn" class="btn primary" type="button">Start the scanner</button>
+    <button class="btn ghost manual-open" type="button">Enter a shard number instead</button>
+  </div>
+  <nav class="tray" id="tray">
+    <div id="chips" class="chips"></div>
+    <button class="btn ghost small manual-open" type="button">Shard number</button>
+  </nav>
+  <div id="ar-bar" class="ar-bar" hidden>
+    <p class="ar-help" id="ar-help">Drag sideways to turn it, drag up to tilt it toward you, pinch to zoom. Double-tap resets.</p>
+    <div class="row" id="tilt-row" hidden>
+      <button class="btn small grow" type="button" id="holo-tilt">Turn on tilt</button>
+      <button class="btn small grow" type="button" id="holo-level">Level the board</button>
+    </div>
+    <div class="row">
+      <button class="btn small primary grow" type="button" id="holo-card">Rule card</button>
+      <button class="btn small grow" type="button" id="holo-reset">Reset view</button>
+      <button class="btn small grow" type="button" id="holo-done">Done</button>
+    </div>
+  </div>
+  <article id="sheet" class="sheet" hidden aria-labelledby="sheet-title">
+    <header class="sheet-head">
+      <div><p class="sheet-slot" id="sheet-slot"></p><h2 id="sheet-title"></h2></div>
+      <button id="sheet-close" class="btn ghost small" type="button">Close</button>
+    </header>
+    <div id="sheet-body" class="sheet-body"></div>
+  </article>
+  <div id="flat" class="flat" hidden>
+    <div class="flat-inner">
+      <div class="flat-head"><h2>The Descent</h2><button class="btn small" type="button" id="flat-close">Back</button></div>
+      <div id="flat-maze"></div>
+      <p class="muted">Pink rings are the markers the Pathfinder can see. Find the maze whose markers match theirs. Walls are solid lines; a break in a ring is a gap where they can step inward. One swipe moves one hour around the ring.</p>
+    </div>
+  </div>
+  <dialog id="manual">
+    <h2>Enter a shard number</h2>
+    <div class="shard-pick" id="shard-pick"></div>
+    <button class="btn ghost wide" type="button" id="manual-cancel">Cancel</button>
+  </dialog>
+  <div id="toast" class="toast" role="alert" hidden></div>
+  <div id="flash" class="flash"></div>
+  <div id="lost" class="lost" hidden>
+    <div>
+      <p class="kicker">Neural link // Status</p>
+      <h2 id="lost-title">Link lost</h2>
+      <p id="lost-text">Three strikes ejected the Pathfinder. Start a new round from the home screen.</p>
+      <a class="btn primary" href="#home">Back to home</a>
+    </div>
+  </div>
+</section>
+
+<section id="view-director" class="view" hidden>
+  <div class="console">
+    <header class="console-head">
+      <a class="icon-btn" href="#home" aria-label="Leave mission control">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 4 7 10l6 6"/></svg>
+      </a>
+      <div class="who"><strong>Flight Director</strong><span id="dir-round">Mission control</span></div>
+      <div class="dir-clock" id="dir-clock">--:--</div>
+      <div class="strikes" id="dir-strikes" aria-label="Strikes: 0 of 3"><i></i><i></i><i></i></div>
+    </header>
+    <p id="dir-offline" class="offline-note" hidden>Offline // Live rooms only run on the Cloudflare address. The directory and hull log still work here.</p>
+    <div class="console-grid">
+      <section class="panel">
+        <p class="kicker ruled">Crew // Join</p>
+        <div class="join">
+          <div id="dir-qr" class="join-qr"></div>
+          <div>
+            <p class="kicker">Round number</p>
+            <p class="big-code" id="dir-code">----</p>
+            <p class="muted">Phones scan this code, or open the site and enter the round number. The Pathfinder types it in the headset.</p>
+          </div>
+        </div>
+        <p class="kicker ruled" style="margin-top:18px">Crew // Connected</p>
+        <ul class="crew" id="dir-crew"></ul>
+      </section>
+      <section class="panel">
+        <p class="kicker ruled">Round // Control</p>
+        <div class="control-row">
+          <span class="phase" id="dir-phase">Lobby</span>
+          <label class="kicker" for="dir-length">Length</label>
+          <select id="dir-length"><option value="480000">8 min</option><option value="600000" selected>10 min</option><option value="720000">12 min</option><option value="900000">15 min</option></select>
+        </div>
+        <div class="control-row">
+          <button class="btn primary grow" type="button" id="dir-start">Start round</button>
+          <button class="btn grow" type="button" id="dir-reset">Reset</button>
+          <button class="btn grow" type="button" id="dir-new">New round</button>
+        </div>
+        <p class="kicker ruled" style="margin-top:18px">Nodes // Directory</p>
+        <div class="scroll-x"><table class="rule" id="dir-nodes"></table></div>
+        <p class="kicker ruled" style="margin-top:18px">Hull // Log</p>
+        <div class="hull">
+          <label><span class="kicker">Case number</span><input id="hull-case" autocomplete="off" placeholder="From the Pathfinder"></label>
+          <label><span class="kicker">Charged cells</span><input id="hull-cells" inputmode="numeric" autocomplete="off" placeholder="1 to 4"></label>
+          <label><span class="kicker">Sector sigil</span><input id="hull-sigil" autocomplete="off" placeholder="Spiral, Eye, Crown or Wave"></label>
+        </div>
+      </section>
+      <section class="panel">
+        <p class="kicker ruled">Comms // Log</p>
+        <ol class="log" id="dir-log"></ol>
+      </section>
+    </div>
+  </div>
+</section>
+
+<section id="view-shards" class="view" hidden>
+  <div class="paper">
+    <div class="paper-head no-print">
+      <div>
+        <p class="kicker ruled">Project Aether // Print</p>
+        <h1>Shards</h1>
+        <p>Print on A4 at 100% scale, four shards per page. Keep each card flat on the table. The game reassigns which node each shard holds every round.</p>
+      </div>
+      <div style="display:flex;gap:10px"><a class="btn ghost" href="#home">Home</a><button class="btn primary" type="button" id="print-btn">Print</button></div>
+    </div>
+    <div class="shard-grid" id="shard-grid"></div>
+  </div>
+</section>
+
+<section id="view-test" class="view" hidden>
+  <div class="paper">
+    <div class="paper-head">
+      <div>
+        <p class="kicker ruled">Project Aether // Playtest</p>
+        <h1>Test sheet</h1>
+        <p>Stands in for the Pathfinder and Flight Director until their apps exist. Read the Pathfinder’s side aloud; keep answers hidden until you need them.</p>
+      </div>
+      <a class="btn ghost" href="#home">Home</a>
+    </div>
+    <div class="round-ctl" style="margin-bottom:6px">
+      <input id="test-round" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" aria-label="Round number">
+      <button class="btn" type="button" id="test-load">Load round</button>
+    </div>
+    <div id="test-body"></div>
+  </div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script>
+/*LOGIC-START*/
+const CODENAMES = ['Heron','Osprey','Marlin','Cypress','Granite','Vesper','Pelican','Linden'];
+const SEALS = ['Harbour','Falcon','Meridian','Thistle','Juniper','Orchid','Summit','Willow','Quarry','Tundra','Beacon','Cinder'];
+const SIGILS = ['Spiral','Eye','Crown','Wave'];
+const NODES = [
+  { id: 'conduits',  name: 'The Conduits',      slot: 1, owner: 'astro' },
+  { id: 'resonator', name: 'The Resonator',     slot: 2, owner: 'astro' },
+  { id: 'glyph',     name: 'The Glyph Lock',    slot: 3, owner: 'xeno' },
+  { id: 'descent',   name: 'The Descent',       slot: 4, owner: 'xeno' },
+  { id: 'echo',      name: 'The Echo Chamber',  slot: 5, owner: 'xeno' },
+  { id: 'vent',      name: 'The Pressure Vent', slot: 6, owner: 'astro' }
+];
+const NODE = Object.fromEntries(NODES.map(n => [n.id, n]));
+const ROLES = { xeno: { name: 'Xenolinguist' }, astro: { name: 'Astrophysicist' } };
+const COLOURS = { Amber: 3, Violet: 2, Teal: 1, Grey: 0 };
+const PATTERNS = { SSSL: [412, 538], SSLL: [426, 571], SLSL: [449, 503], SLLS: [463, 594], LSSL: [478, 517], LSLS: [485, 552], LLSS: [491, 529], LLLS: [507, 586] };
+const GLYPH_GRID = [
+  ['Comet', 'Fork', 'Almond', 'Ladder'],
+  ['Twin Moons', 'Knot', 'Arrowhead', 'Broken Ring'],
+  ['Spine', 'Hourglass', 'Lantern', 'Hook'],
+  ['Gate', 'Star Seed', 'Ripple', 'Claw']
+];
+const READ_ORDERS = {
+  Spiral: [[0,0],[0,1],[0,2],[0,3],[1,3],[2,3],[3,3],[3,2],[3,1],[3,0],[2,0],[1,0],[1,1],[1,2],[2,2],[2,1]],
+  Eye: [], Crown: [], Wave: []
+};
+for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) READ_ORDERS.Eye.push([r, c]);
+for (let r = 3; r >= 0; r--) for (let c = 0; c < 4; c++) READ_ORDERS.Crown.push([r, c]);
+for (let r = 0; r < 4; r++) for (let i = 0; i < 4; i++) READ_ORDERS.Wave.push([r, r % 2 === 0 ? i : 3 - i]);
+const SHAPES = ['Triangle', 'Square', 'Circle', 'Cross'];
+const hourOf = s => (s === 0 ? 12 : s);
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function charge(colour, dot, flicker) { return (COLOURS[colour] + (dot ? 1 : 0)) * (flicker ? 2 : 1); }
+function resonatorFreq(pattern, last) { return PATTERNS[pattern][last % 2]; }
+function glyphAnswer(glyphs, sigil) {
+  const idx = {};
+  READ_ORDERS[sigil].forEach(([r, c], i) => { idx[GLYPH_GRID[r][c]] = i; });
+  return glyphs.slice().sort((a, b) => idx[a] - idx[b]);
+}
+// hist[stage] = [positionPressed, labelPressed]; labels = label at positions 1..4; returns position 1..4
+function echoPress(stage, shape, labels, hist, cells) {
+  const posOf = lab => labels.indexOf(lab) + 1;
+  if (stage === 1) return { Triangle: 2, Square: posOf(4), Circle: 4, Cross: posOf(1) }[shape];
+  if (stage === 2) return { Triangle: posOf(hist[1][1]), Square: 1, Circle: (hist[1][0] % 4) + 1, Cross: posOf(3) }[shape];
+  if (stage === 3) return { Triangle: hist[2][1], Square: posOf(hist[1][1]), Circle: 3, Cross: posOf(hist[2][0]) }[shape];
+  return { Triangle: hist[2][0], Square: posOf(cells), Circle: hist[1][1], Cross: posOf(hist[3][1]) }[shape];
+}
+function ventAnswer(g, last) {
+  const [L, C, R] = g;
+  if (L === C && C === R) return 'Centre';
+  if (L === C) return 'Right';
+  if (L === R) return 'Centre';
+  if (C === R) return 'Left';
+  const names = ['Left', 'Centre', 'Right'];
+  return last <= 4 ? names[g.indexOf(Math.max(...g))] : names[g.indexOf(Math.min(...g))];
+}
+// ---- The Descent: ball maze generated per round ----
+// Cells are [ring, sector]; ring 0 outer, 1 middle, 2 inner; sector 0..11 (0 = 12 o'clock).
+// walls[ring] = radial wall between sector b and b+1. gaps[0] outer->middle, gaps[1] middle->inner,
+// gaps[2] inner->core (always two neighbouring sectors, so the ball fits through).
+const RING_NAMES = ['Outer', 'Middle', 'Inner', 'Core'];
+function ballNeighbours(mz, r, s) {
+  const out = [];
+  for (const d of [1, -1]) { const y = (s + d + 12) % 12; const b = d === 1 ? s : y; if (!mz.walls[r].includes(b)) out.push([r, y]); }
+  if (mz.gaps[r].includes(s)) out.push(r < 2 ? [r + 1, s] : [3, 0]);
+  if (r > 0 && mz.gaps[r - 1].includes(s)) out.push([r - 1, s]);
+  return out;
+}
+function ballRoute(mz, start, traps) {
+  const key = c => c[0] + ',' + c[1]; const blocked = new Set(traps.map(key));
+  const q = [[[0, start]]]; const seen = new Set([key([0, start])]);
+  while (q.length) {
+    const path = q.shift(); const [r, s] = path[path.length - 1];
+    if (r === 3) return path;
+    for (const n of ballNeighbours(mz, r, s)) {
+      const k = key(n); if (seen.has(k) || blocked.has(k)) continue;
+      seen.add(k); q.push(path.concat([n]));
+    }
+  }
+  return null;
+}
+function genBallMaze(rnd) {
+  const int = n => Math.floor(rnd() * n);
+  const pickSet = (k) => { const a = [...Array(12).keys()]; for (let i = 11; i > 0; i--) { const j = int(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a.slice(0, k).sort((x, y) => x - y); };
+  for (let tries = 1; tries <= 400; tries++) {
+    const walls = [pickSet(3 + int(2)), pickSet(3 + int(2)), pickSet(2 + int(2))];
+    const c = int(12);
+    const gaps = [pickSet(3 + int(2)), pickSet(3 + int(2)), [c, (c + 1) % 12].sort((x, y) => x - y)];
+    const mz = { walls, gaps };
+    const start = int(12);
+    const obvious = ballRoute(mz, start, []);
+    if (!obvious || obvious.length < 6) continue;
+    const inside = obvious.filter(([r]) => r === 1 || r === 2);
+    const t1 = inside[int(inside.length)];
+    const detour = ballRoute(mz, start, [t1]);
+    if (!detour) continue;
+    // second trapdoor: a cell entered straight through a gap, off the detour, that still leaves a safe route
+    const entry = [];
+    for (let r = 0; r < 2; r++) for (const s of gaps[r]) entry.push([r + 1, s]);
+    const onDetour = new Set(detour.map(c => c.join()));
+    const options = entry.filter(c => !onDetour.has(c.join()) && c.join() !== t1.join());
+    if (!options.length) continue;
+    const t2 = options[int(options.length)];
+    const safe = ballRoute(mz, start, [t1, t2]);
+    if (!safe || safe.length - obvious.length > 10 || safe.length > 19) continue;
+    return { walls, gaps, traps: [t1, t2], start, route: safe, obvious, tries };
+  }
+  return null;
+}
+function makeRound(code) {
+  const rnd = mulberry32(((code * 2654435761) >>> 0) ^ 0x9E3779B9);
+  const int = n => Math.floor(rnd() * n);
+  const pick = a => a[int(a.length)];
+  const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = int(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const codename = pick(CODENAMES);
+  const digits = String(int(10000)).padStart(4, '0');
+  const last = Number(digits[3]);
+  const cells = 1 + int(4);
+  const cellStates = shuffle([0, 1, 2, 3].map(i => i < cells));
+  const sigil = pick(SIGILS);
+  const shards = shuffle([1, 2, 3, 4, 5, 6, 7, 8]);
+  const seals = shuffle(SEALS);
+  const nodeShard = {}, shardNode = {}, nodeSeal = {};
+  NODES.forEach((n, i) => { nodeShard[n.id] = shards[i]; shardNode[shards[i]] = n.id; nodeSeal[n.id] = seals[i]; });
+  const deadShards = shards.slice(6).sort((a, b) => a - b);
+  let strands, targets;
+  do {
+    const n = 4 + int(3);
+    strands = Array.from({ length: n }, () => ({ colour: pick(Object.keys(COLOURS)), dot: rnd() < 0.5, flicker: rnd() < 0.5 }));
+    targets = strands.map((s, i) => (charge(s.colour, s.dot, s.flicker) === cells ? i + 1 : 0)).filter(Boolean);
+  } while (targets.length < 1 || targets.length > 3);
+  const pattern = pick(Object.keys(PATTERNS));
+  const glyphs = shuffle(GLYPH_GRID.flat()).slice(0, 4);
+  const stages = []; const hist = {};
+  for (let st = 1; st <= 4; st++) {
+    const shape = pick(SHAPES); const labels = shuffle([1, 2, 3, 4]);
+    const position = echoPress(st, shape, labels, hist, cells);
+    hist[st] = [position, labels[position - 1]];
+    stages.push({ shape, labels, position, label: labels[position - 1] });
+  }
+  const gauges = [1 + int(5), 1 + int(5), 1 + int(5)];
+  return {
+    code, caseNumber: codename + ' ' + digits, last, cells, cellStates, sigil, nodeShard, shardNode, nodeSeal, deadShards,
+    conduits: { strands, targets },
+    resonator: { pattern, freq: resonatorFreq(pattern, last) },
+    glyph: { glyphs, answer: glyphAnswer(glyphs, sigil) },
+    descent: genBallMaze(rnd),
+    echo: { stages },
+    vent: { gauges, answer: ventAnswer(gauges, last) }
+  };
+}
+// ---- Pose from a tracked square (QR corners) ----
+// Marker plane coordinates: QR side = 1, X right, Y down. Order: top-left, top-right, bottom-right, bottom-left.
+const MARKER_SRC = [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]];
+function solveLinear(A, b) {
+  const n = b.length; const M = A.map((row, i) => row.concat(b[i]));
+  for (let c = 0; c < n; c++) {
+    let p = c; for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+    if (Math.abs(M[p][c]) < 1e-12) return null;
+    [M[c], M[p]] = [M[p], M[c]];
+    for (let r = 0; r < n; r++) {
+      if (r === c) continue; const f = M[r][c] / M[c][c];
+      for (let k = c; k <= n; k++) M[r][k] -= f * M[c][k];
+    }
+  }
+  return M.map((row, i) => row[n] / row[i]);
+}
+function solveHomography(src, dst) {
+  const A = [], b = [];
+  for (let i = 0; i < 4; i++) {
+    const [X, Y] = src[i]; const u = dst[i].x, v = dst[i].y;
+    A.push([X, Y, 1, 0, 0, 0, -u * X, -u * Y]); b.push(u);
+    A.push([0, 0, 0, X, Y, 1, -v * X, -v * Y]); b.push(v);
+  }
+  const h = solveLinear(A, b);
+  return h ? h.concat(1) : null;
+}
+function poseFromHomography(H, f, cx, cy) {
+  if (!H) return null;
+  const col = j => [H[j], H[3 + j], H[6 + j]];
+  const kinv = c => [(c[0] - cx * c[2]) / f, (c[1] - cy * c[2]) / f, c[2]];
+  const norm = v => Math.hypot(v[0], v[1], v[2]);
+  const scale = (v, k) => v.map(x => x * k);
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const m1 = kinv(col(0)), m2 = kinv(col(1)), m3 = kinv(col(2));
+  let lam = 2 / (norm(m1) + norm(m2));
+  if (m3[2] * lam < 0) lam = -lam;
+  let r1 = scale(m1, lam); r1 = scale(r1, 1 / norm(r1));
+  let r2 = scale(m2, lam); const d = dot(r1, r2);
+  r2 = [r2[0] - d * r1[0], r2[1] - d * r1[1], r2[2] - d * r1[2]]; r2 = scale(r2, 1 / norm(r2));
+  const r3 = [r1[1] * r2[2] - r1[2] * r2[1], r1[2] * r2[0] - r1[0] * r2[2], r1[0] * r2[1] - r1[1] * r2[0]];
+  return { r1, r2, r3, t: scale(m3, lam) };
+}
+// Estimate focal length (pixels) from a square marker's homography; principal point assumed at image centre.
+function estimateFocal(H, cx, cy) {
+  if (!H) return null;
+  const col = j => [H[j] - cx * H[6 + j], H[3 + j] - cy * H[6 + j], H[6 + j]];
+  const [a1, b1, c1] = col(0), [a2, b2, c2] = col(1);
+  const A1 = c1 * c2, B1 = -(a1 * a2 + b1 * b2);
+  const A2 = c1 * c1 - c2 * c2, B2 = (a2 * a2 + b2 * b2) - (a1 * a1 + b1 * b1);
+  const den = A1 * A1 + A2 * A2;
+  if (!(den > 0)) return null;
+  const f2 = (A1 * B1 + A2 * B2) / den;
+  if (!(f2 > 0)) return null;
+  const f = Math.sqrt(f2);
+  const tilt = Math.hypot(c1, c2) * f / Math.hypot(a1, b1);
+  return tilt > 0.3 ? f : null;
+}
+/*LOGIC-END*/
+
+// ---------- Drawings ----------
+const GLYPH_SVG = {
+  'Comet': '<circle cx="34" cy="34" r="14" fill="currentColor"/><path d="M46 46 86 86M40 55 70 85M55 40 85 70"/>',
+  'Fork': '<path d="M50 10V44M24 44H76M24 44V88M50 44V88M76 44V88"/>',
+  'Almond': '<path d="M10 50Q50 8 90 50Q50 92 10 50Z"/>',
+  'Ladder': '<path d="M32 10V90M68 10V90M32 30H68M32 50H68M32 70H68"/>',
+  'Twin Moons': '<path d="M14 14A36 36 0 0 1 14 86A22 36 0 0 0 14 14ZM86 14A36 36 0 0 0 86 86A22 36 0 0 1 86 14Z" fill="currentColor" stroke="none"/>',
+  'Knot': '<path d="M50 50C10 6 90 6 50 50C10 94 90 94 50 50Z"/>',
+  'Arrowhead': '<path d="M50 12 86 84H14Z" fill="currentColor"/>',
+  'Broken Ring': '<path d="M64.8 18.3A35 35 0 1 1 35.2 18.3"/>',
+  'Spine': '<path d="M50 8V92M38 22H62M38 36H62M38 50H62M38 64H62M38 78H62"/>',
+  'Hourglass': '<path d="M20 12H80L50 50ZM20 88H80L50 50Z"/>',
+  'Lantern': '<rect x="20" y="20" width="60" height="60"/><circle cx="50" cy="50" r="9" fill="currentColor"/>',
+  'Hook': '<path d="M60 32V66Q60 88 40 88Q22 88 22 70"/><circle cx="60" cy="14" r="7" fill="currentColor" stroke="none"/>',
+  'Gate': '<path d="M24 76V46A26 26 0 0 1 76 46V76M12 88H88"/>',
+  'Star Seed': '<path d="M50 6 60 40 94 50 60 60 50 94 40 60 6 50 40 40Z" fill="currentColor"/>',
+  'Ripple': '<path d="M36 78A14 14 0 0 1 64 78M22 78A28 28 0 0 1 78 78M8 78A42 42 0 0 1 92 78"/>',
+  'Claw': '<path d="M24 14Q12 50 32 88M50 10Q40 50 54 90M76 14Q66 50 80 88"/>'
+};
+const glyphSvg = (name, cls = '') => `<svg class="${cls}" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${GLYPH_SVG[name]}</svg>`;
+const SHAPE_SVG = {
+  Triangle: '<path d="M12 3 21 20H3Z"/>',
+  Square: '<rect x="4" y="4" width="16" height="16"/>',
+  Circle: '<circle cx="12" cy="12" r="8.5"/>',
+  Cross: '<path d="M12 3V21M3 12H21" stroke-width="4"/>'
+};
+const shapeSvg = s => `<svg class="shape" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round" aria-hidden="true">${SHAPE_SVG[s]}</svg>`;
+const COLOUR_HEX = { Amber: '#F2A93B', Violet: '#8B5CF6', Teal: '#14B8A6', Grey: '#9AA5AE' };
+const PULSE_WORDS = p => p.split('').map(c => (c === 'S' ? 'short' : 'long')).join(', ');
+const pulseIcon = p => `<span class="pulse" aria-label="${PULSE_WORDS(p)}">${p.split('').map(c => `<i class="${c === 'S' ? 's' : 'l'}"></i>`).join('')}</span>`;
+
+function tickRing(g, r1, r2, n = 12) {
+  let d = '';
+  for (let i = 0; i < n; i++) {
+    const a = (i * 360 / n) * Math.PI / 180;
+    const len = i % 3 === 0 ? r2 : r1 + (r2 - r1) * 0.45;
+    d += `M${(r1 * Math.sin(a)).toFixed(2)} ${(-r1 * Math.cos(a)).toFixed(2)}L${(len * Math.sin(a)).toFixed(2)} ${(-len * Math.cos(a)).toFixed(2)}`;
+  }
+  g.innerHTML = `<path d="${d}"/>`;
+}
+
+function mazeSvg(mz) {
+  const R = [62, 46, 30, 17];
+  const P = (r, deg) => [r * Math.sin(deg * Math.PI / 180), -r * Math.cos(deg * Math.PI / 180)];
+  const f = n => n.toFixed(2);
+  let d = '';
+  for (let b = 0; b < 3; b++) {
+    const r = R[b + 1];
+    for (let s = 0; s < 12; s++) {
+      if (mz.gaps[b].includes(s)) continue;
+      const [x1, y1] = P(r, s * 30 - 15), [x2, y2] = P(r, s * 30 + 15);
+      d += `M${f(x1)} ${f(y1)}A${r} ${r} 0 0 1 ${f(x2)} ${f(y2)}`;
+    }
+  }
+  for (let i = 0; i < 3; i++) for (const b of mz.walls[i]) {
+    const a = b * 30 + 15; const [x1, y1] = P(R[i + 1], a), [x2, y2] = P(R[i], a);
+    d += `M${f(x1)} ${f(y1)}L${f(x2)} ${f(y2)}`;
+  }
+  const [sx, sy] = P(54, mz.start * 30);
+  let nums = '';
+  for (let s = 0; s < 12; s++) { const [x, y] = P(70.5, s * 30); nums += `<text class="mz-num" x="${f(x)}" y="${f(y)}">${hourOf(s)}</text>`; }
+  return `<svg class="maze-svg" viewBox="-80 -80 160 160" role="img" aria-label="Map of the Descent">
+    <circle class="mz-floor" r="62"/>
+    <circle class="mz-wall" r="62"/><path class="mz-wall" d="${d}"/>
+    <circle class="mz-core" r="7"/><circle class="mz-ball" cx="${f(sx)}" cy="${f(sy)}" r="3.4"/>${nums}</svg>`;
+}
+
+function readingOrderSvg(sigil) {
+  const pt = ([r, c]) => [16 + c * 22.7, 16 + r * 22.7];
+  const pts = READ_ORDERS[sigil].map(pt);
+  const dots = pts.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="3.2" fill="var(--ink-2)"/>`).join('');
+  const [sx, sy] = pts[0], [ex, ey] = pts[pts.length - 1];
+  return `<svg viewBox="0 0 100 100" aria-hidden="true">${dots}
+    <polyline points="${pts.map(p => p.join(',')).join(' ')}" fill="none" stroke="var(--cyan)" stroke-width="3.2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${sx}" cy="${sy}" r="7" fill="var(--cyan)"/><circle cx="${ex}" cy="${ey}" r="6.5" fill="var(--surface)" stroke="var(--cyan)" stroke-width="3"/></svg>`;
+}
+
+// ---------- State ----------
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+};
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const state = { role: null, code: null, round: null, opened: [], active: null, view: null, strikes: 0, solved: new Set(), glyphStep: 0, tuner: 500, camOn: false, mazeKey: 'A', lastMsg: {} };
+const validCode = v => /^\d{4}$/.test(v);
+const newCode = () => String(1000 + Math.floor(Math.random() * 9000));
+function currentCode() {
+  const input = $('#round-input');
+  let v = input.value.trim();
+  if (!validCode(v)) { v = newCode(); input.value = v; }
+  store.set('aether-round', v);
+  return Number(v);
+}
+
+// ---------- Routing ----------
+function show(view) {
+  ['home', 'field', 'director', 'shards', 'test'].forEach(v => { $('#view-' + v).hidden = v !== view; });
+  document.body.dataset.view = view;
+}
+function route() {
+  const h = location.hash.replace('#', '');
+  if (h === 'xenolinguist' || h === 'astrophysicist') { enterField(h === 'xenolinguist' ? 'xeno' : 'astro'); return; }
+  leaveField();
+  if (h === 'director') { enterDirector(); window.scrollTo(0, 0); return; }
+  if (Net.role === 'director') Net.close();
+  if (h === 'shards') { renderShards(); show('shards'); }
+  else if (h === 'test') { renderTest(); show('test'); }
+  else show('home');
+  window.scrollTo(0, 0);
+}
+window.addEventListener('hashchange', route);
+
+// ---------- Field ----------
+function enterField(role) {
+  const code = currentCode();
+  if (state.role !== role || state.code !== code) {
+    Object.assign(state, { role, code, round: makeRound(code), opened: [], active: null, view: null, strikes: 0, solved: new Set(), glyphStep: 0, tuner: 500, mazeKey: 'A' });
+  }
+  state.active = null; state.view = null; document.body.classList.remove('holo'); AR.stopPreview();
+  if (Net.round !== code || Net.role !== role) { state.epoch = null; state.lastSeenStrikes = undefined; }
+  Net.connect(code, role); $('#clock').hidden = !Net.online;
+  $('#role-name').textContent = ROLES[role].name;
+  $('#round-label').textContent = `Round ${String(code).padStart(4, '0')}`;
+  renderStrikes(); renderChips();
+  $('#sheet').hidden = true; $('#flat').hidden = true; $('#ar-bar').hidden = true; $('#lost').hidden = true;
+  $('#tray').hidden = false;
+  $('#start-cam').hidden = state.camOn;
+  setStatus(state.camOn ? idleStatus() : '');
+  show('field');
+}
+function leaveField() {
+  if (Net.role === 'xeno' || Net.role === 'astro') Net.close();
+  document.body.classList.remove('holo'); AR.stopPreview(); state.view = null;
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  state.camOn = false; state.active = null;
+  const v = $('#cam'); if (v) v.srcObject = null;
+  AR.clear();
+}
+const idleStatus = () => 'Point the camera at a shard';
+function setStatus(text, st = 'idle') { const el = $('#status'); el.textContent = text; el.hidden = !text; el.dataset.state = st; }
+function toast(text, kind = '', key = text, quiet = 2500) {
+  const now = performance.now();
+  if (state.lastMsg[key] && now - state.lastMsg[key] < quiet) return;
+  state.lastMsg[key] = now;
+  const el = $('#toast'); el.textContent = text; el.className = 'toast ' + kind; el.hidden = false; document.body.classList.add('toasting');
+  clearTimeout(toast.t); toast.t = setTimeout(() => { el.hidden = true; document.body.classList.remove('toasting'); }, 2600);
+}
+function buzz(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} }
+function renderStrikes() {
+  $$('#strikes i').forEach((el, i) => el.classList.toggle('on', i < state.strikes));
+  $('#strikes').setAttribute('aria-label', `Strikes: ${state.strikes} of 3`);
+}
+function addStrike(reason) {
+  buzz([80, 60, 80]);
+  const fl = $('#flash'); fl.classList.remove('go'); void fl.offsetWidth; fl.classList.add('go');
+  if (Net.online && Net.state) {
+    if (Net.state.phase !== 'live') { toast('Practice strike: the round hasn’t started', 'bad', 'strike' + performance.now()); return; }
+    state.ownStrikePending = true; Net.send({ type: 'strike', node: state.active, reason });
+    toast('Strike: ' + reason, 'bad', 'strike' + performance.now()); return;
+  }
+  state.strikes = Math.min(3, state.strikes + 1); renderStrikes();
+  toast('Strike: ' + reason, 'bad', 'strike' + performance.now());
+  if (state.strikes >= 3) setTimeout(() => { $('#lost').hidden = false; }, 600);
+}
+function markSolved(id, text) {
+  state.solved.add(id); renderChips(); buzz(40); toast(text, 'good', 'solved' + id);
+  if (Net.online) Net.send({ type: 'solved', node: id });
+}
+function renderChips() {
+  $('#chips').innerHTML = state.opened.map(id => `<button class="chip${state.solved.has(id) ? ' solved' : ''}" type="button" data-node="${id}">${NODE[id].name}</button>`).join('');
+}
+$('#chips').addEventListener('click', e => { const b = e.target.closest('.chip'); if (b) openNode(b.dataset.node); });
+
+function onShard(n, manual = false) {
+  const r = state.round; if (!r) return;
+  const id = r.shardNode[n];
+  if (!id) { toast(`Shard ${n}: no signal. This shard is empty this round.`, 'bad', 'dead' + n); return; }
+  const node = NODE[id];
+  if (node.owner !== state.role) { toast(`Shard ${n}: wrong specialist. This one belongs to the ${ROLES[node.owner].name}.`, 'bad', 'wrong' + n); return; }
+  if (state.opened.includes(id) && !manual) {
+    if (state.active === null) toast(`Shard ${n} is ${node.name}. Tap its tab below to open it.`, '', 'again' + n, 15000);
+    return;
+  }
+  if (!state.opened.includes(id)) { state.opened.push(id); renderChips(); buzz(30); }
+  openNode(id);
+}
+
+function openNode(id) {
+  state.active = id;
+  $('#sheet').hidden = true; $('#flat').hidden = true;
+  AR.init();
+  if (AR.ok) openHolo(id);
+  else { state.view = 'card'; $('#tray').hidden = true; openCard(id); }
+}
+function openHolo(id) {
+  state.view = 'holo'; document.body.classList.add('holo');
+  $('#tray').hidden = true; $('#start-cam').hidden = true; $('#ar-bar').hidden = false;
+  if (!state.camOn) AR.startPreview();
+  AR.setModel(id);
+  const physics = AR.model && AR.model.locked;
+  $('#tilt-row').hidden = !physics;
+  $('#holo-reset').hidden = physics;
+  $('#ar-help').textContent = !physics ? 'Drag sideways to turn it, drag up to tilt it toward you, pinch to zoom. Double-tap resets.'
+    : state.camOn ? 'Pick up the card and tilt it to roll the ball. You can also drag on the screen to push it.'
+    : 'Tilt your phone to roll the ball, or drag on the screen to push it.';
+  if (physics) { gravityIn.ref = null; if (!needsMotionPermission()) startMotion(); renderTiltRow(); }
+}
+function openCard(id) {
+  $('#sheet-slot').textContent = `Shard ${state.round.nodeShard[id]} // Rule card`;
+  $('#sheet-title').textContent = NODE[id].name;
+  $('#sheet-body').innerHTML = RENDER[id]();
+  $('#sheet-body').scrollTop = 0;
+  BIND[id] && BIND[id]();
+  $('#sheet').hidden = false;
+  if (state.view !== 'holo') setStatus('');
+}
+function closeNode() {
+  state.active = null; state.view = null; seenAt = performance.now();
+  document.body.classList.remove('holo'); AR.stopPreview();
+  $('#sheet').hidden = true; $('#ar-bar').hidden = true; $('#flat').hidden = true; $('#tray').hidden = false;
+  $('#start-cam').hidden = state.camOn;
+  AR.clear();
+  setStatus(state.camOn ? idleStatus() : '');
+}
+$('#sheet-close').addEventListener('click', () => { if (state.view === 'holo') $('#sheet').hidden = true; else closeNode(); });
+$('#holo-card').addEventListener('click', () => openCard(state.active));
+$('#holo-done').addEventListener('click', closeNode);
+
+// ---------- Node cards ----------
+const RENDER = {
+  descent() {
+    const solved = state.solved.has('descent');
+    return `${solved ? '<p class="done-note">The ball reached the core. This node is complete.</p>' : ''}
+      <p class="lead">Roll the ball from the outer ring into the hole at the core. Pick up the card and tilt it: real gravity moves the ball. You can also drag on the screen to push it.</p>
+      <div class="map-wrap">${mazeSvg(state.round.descent)}</div>
+      <h3>Trapdoors</h3>
+      <p>Two cells hide trapdoors that look like normal floor, and only the Pathfinder can see them. Ask the Flight Director for their positions as a ring and an hour, like “Middle 4”.</p>
+      <p class="muted">Rolling onto a trapdoor is a strike, and the ball goes back to the start.</p>`;
+  },
+  conduits() {
+    const { strands } = state.round.conduits;
+    const w = 100 / strands.length;
+    const bars = strands.map((s, i) => `<g><rect x="${(i * w + w * 0.3).toFixed(2)}" y="10" width="${(w * 0.4).toFixed(2)}" height="100" rx="2" fill="${COLOUR_HEX[s.colour]}"/>
+      <text x="${(i * w + w / 2).toFixed(2)}" y="124" text-anchor="middle" font-size="9" font-weight="700" fill="var(--ink)">${i + 1}</text>
+      <text x="${(i * w + w / 2).toFixed(2)}" y="137" text-anchor="middle" font-size="7" fill="var(--ink-2)">${s.colour}</text></g>`).join('');
+    return `<p class="lead">Spectral scan of the strands, left to right. Only you see colour; the Pathfinder sees every strand as white.</p>
+      <svg class="strands" viewBox="0 0 100 142" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${strands.map((s, i) => `Strand ${i + 1} ${s.colour}`).join(', ')}">${bars}</svg>
+      <h3>Rule</h3>
+      <p class="formula">Charge = colour value, plus 1 if the cap is a solid dot, then doubled if the strand flickers.</p>
+      <table class="rule"><thead><tr><th>Colour</th><th>Value</th></tr></thead><tbody>
+      ${Object.entries(COLOURS).map(([c, v]) => `<tr><td><span class="swatch" style="background:${COLOUR_HEX[c]}"></span>${c}</td><td>${v}</td></tr>`).join('')}
+      </tbody></table>
+      <p style="margin-top:12px"><strong>Sever every strand whose charge equals the number of charged power cells.</strong> Leave the rest.</p>
+      <p class="muted">Example: Violet, solid dot, flickering = (2&nbsp;+&nbsp;1)&nbsp;×&nbsp;2&nbsp;=&nbsp;6.</p>
+      <h3>What you need</h3>
+      <p>From the Pathfinder, through the Flight Director: each strand’s cap and whether it flickers. From the Flight Director’s log: the charged power cell count. The Pathfinder makes the cuts.</p>`;
+  },
+  resonator() {
+    const solved = state.solved.has('resonator');
+    return `${solved ? '<p class="done-note">Resonance locked. This node is complete.</p>' : ''}
+      <p class="lead">Find the core’s pulse pattern in the table, take the column for the case number’s last digit, then tune and transmit.</p>
+      <div class="scroll-x"><table class="rule"><thead><tr><th>Pulse pattern</th><th>Last digit even</th><th>Last digit odd</th></tr></thead><tbody>
+      ${Object.entries(PATTERNS).map(([p, [e, o]]) => `<tr><td>${pulseIcon(p)}<div class="muted" style="font-size:14px;margin-top:4px">${PULSE_WORDS(p)}</div></td><td>${e}</td><td>${o}</td></tr>`).join('')}
+      </tbody></table></div>
+      <p class="muted" style="margin-top:8px">Zero counts as even. Frequencies are in kilohertz.</p>
+      <div class="tuner">
+        <div class="readout"><output id="freq-out">${state.tuner}</output><span>kilohertz</span></div>
+        <input type="range" id="freq" min="400" max="600" step="1" value="${state.tuner}" aria-label="Frequency in kilohertz" ${solved ? 'disabled' : ''}>
+        <div class="nudge">${[-10, -1, 1, 10].map(d => `<button class="btn small" type="button" data-d="${d}" ${solved ? 'disabled' : ''}>${d > 0 ? '+' : '−'}${Math.abs(d)}</button>`).join('')}</div>
+        <button class="btn primary wide" type="button" id="transmit" ${solved ? 'disabled' : ''}>Transmit</button>
+      </div>`;
+  },
+  glyph() {
+    const solved = state.solved.has('glyph');
+    const order = state.round.glyph.answer;
+    return `${solved ? '<p class="done-note">The Glyph Lock is open.</p>' : ''}
+      <p class="lead">Get the four glyphs from the Pathfinder and the sector sigil from the Flight Director. Tap the glyphs in the order you meet them when reading the grid the sigil’s way.</p>
+      <h3>Reading orders</h3>
+      <div class="orders">${SIGILS.map(s => `<figure>${readingOrderSvg(s)}<figcaption>${s}</figcaption></figure>`).join('')}</div>
+      <p class="muted">Start at the filled dot, finish at the ring.</p>
+      <h3>Lexicon <span class="muted" id="glyph-progress" style="font-weight:500;font-size:16px">${solved ? '' : `${state.glyphStep} of 4 entered`}</span></h3>
+      <div class="keypad" id="keypad">${GLYPH_GRID.flat().map(name => {
+        const k = order.indexOf(name); const lit = solved ? k >= 0 : (k >= 0 && k < state.glyphStep);
+        return `<button class="key${lit ? ' lit' : ''}" type="button" data-glyph="${name}" ${lit ? `data-n="${k + 1}"` : ''} ${solved ? 'disabled' : ''}>${glyphSvg(name)}<span>${name}</span></button>`;
+      }).join('')}</div>`;
+  },
+  echo() {
+    const cell = (shape, st) => ({
+      Triangle: ['Position 2', 'Same label as stage 1', 'Position = stage 2’s label', 'Same position as stage 2'],
+      Square: ['Label 4', 'Position 1', 'Same label as stage 1', 'Label = charged cell count'],
+      Circle: ['Position 4', 'One position right of stage 1 (4 wraps to 1)', 'Position 3', 'Position = stage 1’s label'],
+      Cross: ['Label 1', 'Label 3', 'Label = stage 2’s position', 'Same label as stage 3']
+    })[shape][st];
+    return `<p class="lead">Four stages. Each stage the Pathfinder sees a shape and four pads. Later stages point back to earlier presses, so ask the Flight Director for the history.</p>
+      <p class="formula">“Position N” means the pad in slot N, counting from the left. “Label N” means the pad showing N.</p>
+      <div class="scroll-x"><table class="rule"><thead><tr><th>Shape</th><th>Stage 1</th><th>Stage 2</th><th>Stage 3</th><th>Stage 4</th></tr></thead><tbody>
+      ${SHAPES.map(s => `<tr><td>${shapeSvg(s)}${s}</td>${[0, 1, 2, 3].map(i => `<td>${cell(s, i)}</td>`).join('')}</tr>`).join('')}
+      </tbody></table></div>
+      <h3>If a press is wrong</h3>
+      <p>Strike. The node resets to stage 1 with new shapes and labels, and the Flight Director clears the history.</p>`;
+  },
+  vent() {
+    return `<p class="lead">When the vent alarm sounds you have 45 seconds. Get the three gauge levels from the Pathfinder and the case number’s last digit from the Flight Director.</p>
+      <table class="rule"><thead><tr><th>Gauges</th><th>Vent</th></tr></thead><tbody>
+        <tr><td>All three equal</td><td>Centre</td></tr>
+        <tr><td>Exactly two equal</td><td>The odd one out</td></tr>
+        <tr><td>All different, last digit 0 to 4</td><td>The highest</td></tr>
+        <tr><td>All different, last digit 5 to 9</td><td>The lowest</td></tr>
+      </tbody></table>
+      <p style="margin-top:12px" class="muted">The Pathfinder vents. A wrong vent or a timeout is a strike, and the vent goes back to sleep either way.</p>`;
+  }
+};
+const BIND = {
+  resonator() {
+    const range = $('#freq'), out = $('#freq-out');
+    const set = v => { v = Math.max(400, Math.min(600, v)); range.value = v; out.textContent = v; state.tuner = v; };
+    range.addEventListener('input', () => set(+range.value));
+    $$('.nudge .btn').forEach(b => b.addEventListener('click', () => set(+range.value + Number(b.dataset.d))));
+    $('#transmit').addEventListener('click', () => {
+      const v = +range.value;
+      if (v === state.round.resonator.freq) { markSolved('resonator', `Resonance locked at ${v} kilohertz`); openCard('resonator'); }
+      else addStrike(`${v} kilohertz is the wrong frequency`);
+    });
+  },
+  glyph() {
+    $('#keypad').addEventListener('click', e => {
+      const key = e.target.closest('.key'); if (!key || key.disabled || key.classList.contains('lit')) return;
+      const want = state.round.glyph.answer[state.glyphStep];
+      if (key.dataset.glyph === want) {
+        state.glyphStep++; key.classList.add('lit'); key.dataset.n = state.glyphStep;
+        $('#glyph-progress').textContent = `${state.glyphStep} of 4 entered`;
+        if (state.glyphStep === 4) { markSolved('glyph', 'The Glyph Lock is open'); openCard('glyph'); }
+      } else {
+        key.classList.remove('miss'); void key.offsetWidth; key.classList.add('miss');
+        addStrike(`${key.dataset.glyph} is out of order or not on the lock`);
+      }
+    });
+  }
+};
+
+// ---------- The Descent ----------
+function renderTiltRow() {
+  $('#holo-tilt').hidden = !needsMotionPermission();
+  $('#holo-level').hidden = !AR.previewing;
+}
+$('#holo-tilt').addEventListener('click', () => startMotion().then(ok => { renderTiltRow(); if (!ok) toast('Tilt is off. Drag on the screen to push the ball instead.', '', 'tiltoff'); }));
+$('#holo-level').addEventListener('click', () => { gravityIn.ref = null; toast('Levelled to how you’re holding the phone now', '', 'level'); });
+$('#flat-close').addEventListener('click', () => { if (state.view === 'holo') $('#flat').hidden = true; else closeNode(); });
+
+// ---------- Camera and scanning ----------
+let stream = null, W = 0, H = 0, sc = 1, lastDetect = 0, lockUntil = 0, seenShard = 0, seenAt = -1e9;
+const proc = document.createElement('canvas');
+const procCtx = proc.getContext('2d', { willReadFrequently: true });
+async function startCamera() {
+  const video = $('#cam'); const msg = $('#cam-msg');
+  msg.classList.remove('err'); msg.textContent = 'Starting the camera…';
+  try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw Object.assign(new Error('no-api'), { name: 'NoApi' });
+    if (typeof jsQR !== 'function') throw Object.assign(new Error('no-lib'), { name: 'NoLib' });
+    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+    video.srcObject = stream;
+    await video.play().catch(() => {});
+    if (!video.videoWidth) await new Promise(res => video.addEventListener('loadedmetadata', res, { once: true }));
+    sizeStage();
+    state.camOn = true; $('#start-cam').hidden = true;
+    if (!state.active) setStatus(idleStatus());
+    AR.stopPreview(); sizeStage();
+    if (state.active && state.view === 'holo') openHolo(state.active);
+  } catch (err) {
+    let why = {
+      NotAllowedError: 'Camera access is blocked. Allow it for this page in your browser settings, or enter shard numbers by hand.',
+      SecurityError: 'This page can’t use the camera here. Open it from an HTTPS address, or enter shard numbers by hand.',
+      NotFoundError: 'No camera was found on this device. Enter shard numbers by hand.',
+      NoApi: 'This browser doesn’t give pages camera access. Open it in Safari or Chrome over HTTPS, or enter shard numbers by hand.',
+      NoLib: 'The scanner library didn’t load. Check the connection and reload.'
+    }[err.name] || `The camera didn’t start (${err.name || err.message}). Enter shard numbers by hand.`;
+    let embedded = true; try { embedded = window.self !== window.top; } catch (e) {}
+    if (embedded && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) why = 'This preview runs inside another page, which blocks the camera. Open the app from its own HTTPS address, or enter shard numbers by hand.';
+    msg.textContent = why; msg.classList.add('err');
+  }
+}
+function sizeStage() {
+  const v = $('#cam'); W = v.videoWidth; H = v.videoHeight; if (!W || !H) return;
+  sc = Math.min(1, 640 / Math.max(W, H));
+  proc.width = Math.round(W * sc); proc.height = Math.round(H * sc);
+  const ov = $('#overlay'); ov.width = W; ov.height = H;
+  AR.resize(W, H);
+}
+$('#cam').addEventListener('resize', sizeStage);
+$('#start-btn').addEventListener('click', startCamera);
+
+function drawQuad(corners) {
+  const ov = $('#overlay'); const ctx = ov.getContext('2d');
+  ctx.clearRect(0, 0, ov.width, ov.height);
+  if (!corners) return;
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--glow').trim() || '#12CFE2';
+  ctx.lineWidth = Math.max(3, W / 240); ctx.lineJoin = 'round';
+  ctx.beginPath(); corners.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.closePath(); ctx.stroke();
+}
+function detect(now) {
+  const video = $('#cam');
+  if (video.readyState < 2 || !proc.width) return;
+  procCtx.drawImage(video, 0, 0, proc.width, proc.height);
+  const img = procCtx.getImageData(0, 0, proc.width, proc.height);
+  const res = jsQR(img.data, proc.width, proc.height, { inversionAttempts: 'dontInvert' });
+  const m = res && /^AETHER-SHARD-([1-8])$/.exec(res.data.trim());
+  if (!m) { if (now > lockUntil) { $('#reticle').classList.remove('locked'); drawQuad(null); } return; }
+  const L = res.location;
+  const corners = [L.topLeftCorner, L.topRightCorner, L.bottomRightCorner, L.bottomLeftCorner].map(p => ({ x: p.x / sc, y: p.y / sc }));
+  lockUntil = now + 400; $('#reticle').classList.add('locked');
+  const n = Number(m[1]);
+  if (state.active && state.view === 'holo') {
+    seenShard = n; seenAt = now;
+    const want = state.round.nodeShard[state.active];
+    if (n === want) { AR.track(corners, now); drawQuad(null); }
+    else { drawQuad(corners); toast(`That’s shard ${n}. ${NODE[state.active].name} is on shard ${want}.`, '', 'other' + n); }
+    return;
+  }
+  drawQuad(corners);
+  const fresh = n !== seenShard || now - seenAt > 1500;
+  seenShard = n; seenAt = now;
+  if (fresh && $('#sheet').hidden) onShard(n);
+}
+function tick(now) {
+  requestAnimationFrame(tick);
+  if (document.body.dataset.view === 'director') { tickDirector(); return; }
+  if (document.body.dataset.view !== 'field') return;
+  if (Net.state) { const c = $('#clock'); c.textContent = clockText(); c.classList.toggle('alert', Net.state.phase === 'live' && Net.remaining() < 60000); }
+  const holo = state.active && state.view === 'holo';
+  if (state.camOn && (state.active === null || holo) && $('#flat').hidden && now - lastDetect > 45) { lastDetect = now; detect(now); }
+  if (holo && (state.camOn || AR.previewing) && $('#flat').hidden) {
+    const seen = AR.render(now);
+    const n = state.round.nodeShard[state.active];
+    const name = NODE[state.active].name;
+    setStatus(AR.previewing ? `${name} // 3D preview` : seen ? `${name} // Tracking shard ${n}` : `${name} // Hold shard ${n} in view`, AR.previewing ? 'idle' : seen ? 'ok' : 'wait');
+  }
+}
+requestAnimationFrame(tick);
+
+// ---------- Hologram ----------
+// Look and feel follows the Pathfinder's cockpit: white matte forms, fine dark outlines, a navy well, grey hairlines.
+const HOLO = { lift: 0.32 };
+const INK = 0x1b2230, NAVY = 0x2b3446, PAPER = 0xf3f5f7, OK_GREEN = 0x1a9c5a;
+const view3d = { spin: 0, tilt: 0, zoom: 1 };
+const AR = {
+  ok: false, renderer: null, scene: null, camera: null, anchor: null, holo: null, yawG: null, tiltG: null, spinG: null,
+  model: null, modelId: null, sm: null, lastSeen: -1e9, shownAt: -1e9, f: 1, W: 0, H: 0, previewing: false,
+  cur: { spin: 0, tilt: 0, zoom: 1, yaw: 0 }, ticks: null, fSamples: [], lastNow: 0,
+  init() {
+    if (this.renderer || typeof THREE === 'undefined') return;
+    try {
+      this.renderer = new THREE.WebGLRenderer({ canvas: $('#ar'), alpha: true, antialias: true });
+      this.renderer.setPixelRatio(1); this.renderer.setClearColor(0x000000, 0);
+      this.scene = new THREE.Scene();
+      this.scene.add(new THREE.HemisphereLight(0xffffff, 0x8f98a6, 0.95));
+      const sun = new THREE.DirectionalLight(0xffffff, 0.7); sun.position.set(-1.5, 3, 2); this.scene.add(sun);
+      this.camera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
+      this.anchor = new THREE.Group(); this.anchor.matrixAutoUpdate = false; this.anchor.visible = false; this.scene.add(this.anchor);
+      this.holo = new THREE.Group(); this.holo.rotation.x = -Math.PI / 2; this.anchor.add(this.holo);
+      this.yawG = new THREE.Group(); this.tiltG = new THREE.Group(); this.spinG = new THREE.Group();
+      this.holo.add(this.yawG); this.yawG.add(this.tiltG); this.tiltG.add(this.spinG);
+      this.buildEmitter();
+      this.ok = true;
+    } catch (e) { this.ok = false; this.renderer = null; }
+  },
+  buildEmitter() {
+    // Fine dark rings and ticks on the card, like the cockpit floor.
+    const line = new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.55 });
+    const hair = new THREE.LineBasicMaterial({ color: 0x5a6372, transparent: true, opacity: 0.45 });
+    const sq = [[-.5, -.5], [.5, -.5], [.5, .5], [-.5, .5]].map(([x, z]) => new THREE.Vector3(x, 0.003, z));
+    this.holo.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(sq), line));
+    for (const r of [0.42, 0.5]) this.holo.add(circleLine(r, 0.003, r === 0.5 ? line : hair));
+    this.ticks = new THREE.Group();
+    const pts = [];
+    for (let i = 0; i < 12; i++) {
+      const a = i * Math.PI / 6, L = i % 3 === 0 ? 0.09 : 0.045;
+      pts.push(new THREE.Vector3(0.53 * Math.sin(a), 0.003, -0.53 * Math.cos(a)), new THREE.Vector3((0.53 + L) * Math.sin(a), 0.003, -(0.53 + L) * Math.cos(a)));
+    }
+    this.ticks.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), line));
+    this.holo.add(this.ticks);
+  },
+  resize(w, h) {
+    this.init(); if (!this.ok) return;
+    this.W = w; this.H = h; this.fSamples = [];
+    const saved = Number(store.get(`aether-focal-${w}x${h}`));
+    this.renderer.setSize(w, h, false);
+    this.camera.aspect = w / h;
+    this.setFocal(saved > 0 ? saved : 0.78 * Math.max(w, h));
+  },
+  setFocal(f) {
+    this.f = f; this.camera.fov = 2 * Math.atan(this.H / (2 * f)) * 180 / Math.PI; this.camera.updateProjectionMatrix();
+  },
+  learnFocal(Hm) {
+    const fe = estimateFocal(Hm, this.W / 2, this.H / 2); const big = Math.max(this.W, this.H);
+    if (!fe || fe < 0.4 * big || fe > 2.2 * big) return;
+    this.fSamples.push(fe); if (this.fSamples.length > 45) this.fSamples.shift();
+    if (this.fSamples.length < 6) return;
+    const sorted = this.fSamples.slice().sort((a, b) => a - b); const med = sorted[sorted.length >> 1];
+    if (Math.abs(med - this.f) / this.f > 0.004) this.setFocal(med);
+    if (this.fSamples.length % 15 === 0) store.set(`aether-focal-${this.W}x${this.H}`, med.toFixed(1));
+  },
+  setModel(id) {
+    this.init(); if (!this.ok) return;
+    if (this.model) { this.spinG.remove(this.model.group); disposeTree(this.model.group); }
+    this.model = MODEL_BUILDERS[id](); this.modelId = id;
+    this.spinG.add(this.model.group); this.shownAt = performance.now();
+    if (this.model.locked) Object.assign(view3d, { spin: 0, tilt: 0, zoom: 1 });
+  },
+  startPreview() {
+    this.init(); if (!this.ok) return;
+    this.previewing = true; document.body.classList.add('preview');
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    this.resize(Math.round(window.innerWidth * dpr), Math.round(window.innerHeight * dpr));
+    this.setFocal(1.2 * Math.max(this.W, this.H));
+    this.shownAt = performance.now();
+  },
+  stopPreview() { this.previewing = false; document.body.classList.remove('preview'); },
+  setPose({ r1, r2, r3, t }) {
+    this.anchor.matrix.set(
+      r1[0], r2[0], r3[0], t[0],
+      -r1[1], -r2[1], -r3[1], -t[1],
+      -r1[2], -r2[2], -r3[2], -t[2],
+      0, 0, 0, 1);
+    this.anchor.matrixWorldNeedsUpdate = true;
+  },
+  track(corners, now) {
+    if (!this.ok || this.previewing) return;
+    if (!this.sm || now - this.lastSeen > 300) this.sm = corners.map(p => ({ ...p }));
+    else this.sm = this.sm.map((p, i) => ({ x: p.x + (corners[i].x - p.x) * 0.55, y: p.y + (corners[i].y - p.y) * 0.55 }));
+    this.learnFocal(solveHomography(MARKER_SRC, corners));
+    const pose = poseFromHomography(solveHomography(MARKER_SRC, this.sm), this.f, this.W / 2, this.H / 2);
+    if (!pose) return;
+    this.setPose(pose);
+    if (now - this.lastSeen > 1200) this.shownAt = now;
+    this.lastSeen = now;
+  },
+  render(now) {
+    if (!this.ok) return false;
+    if (this.previewing) {
+      const a = -0.95;
+      this.setPose({ r1: [1, 0, 0], r2: [0, Math.cos(a), Math.sin(a)], r3: [0, -Math.sin(a), Math.cos(a)], t: [0, 0.5, 5.4] });
+      this.lastSeen = now;
+    }
+    const dt = Math.min(1 / 20, Math.max(0, (now - (this.lastNow || now)) / 1000)); this.lastNow = now;
+    const seen = now - this.lastSeen < 1200;
+    this.anchor.visible = seen;
+    if (seen && this.model) {
+      const c = this.cur, k = 0.25, M = this.model;
+      const target = M.locked ? { spin: 0, tilt: 0, zoom: 1 } : view3d;
+      c.spin += (target.spin - c.spin) * k; c.tilt += (target.tilt - c.tilt) * k; c.zoom += (target.zoom - c.zoom) * k;
+      this.scene.updateMatrixWorld(true);
+      const cam = this.holo.worldToLocal(new THREE.Vector3(0, 0, 0));
+      let d = Math.atan2(cam.x, cam.z) - c.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); c.yaw += d * 0.15;
+      const lift = M.lift !== undefined ? M.lift : HOLO.lift;
+      this.yawG.rotation.y = c.yaw;
+      this.yawG.position.y = lift + M.radius * c.zoom * Math.sin(c.tilt) * 0.95;
+      this.tiltG.rotation.x = c.tilt;
+      this.spinG.rotation.y = (M.faceCamera ? 0 : -c.yaw) + c.spin;
+      this.spinG.scale.setScalar(c.zoom);
+      const p = reduceMotion ? 1 : Math.min(1, (now - this.shownAt) / 700);
+      M.rise.scale.y = Math.max(0.001, 1 - Math.pow(1 - p, 3));
+      this.scene.updateMatrixWorld(true);
+      if (M.update) M.update(now, dt);
+      if (!reduceMotion) this.ticks.rotation.y = now / 9000;
+    }
+    this.renderer.render(this.scene, this.camera);
+    return seen;
+  },
+  clear() { if (this.ok) { this.anchor.visible = false; this.sm = null; this.renderer.clear(); } }
+};
+window.addEventListener('resize', () => { if (AR.previewing) AR.startPreview(); });
+function disposeTree(obj) {
+  obj.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } });
+}
+function circleLine(r, y, mat, n = 96) {
+  const pts = []; for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2; pts.push(new THREE.Vector3(r * Math.sin(a), y, -r * Math.cos(a))); }
+  return new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), mat);
+}
+// Small uppercase monospaced label on a white pill, readable over any camera background.
+function textSprite(text, height = 0.085, dot = null) {
+  const font = '500 40px "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace';
+  const m = document.createElement('canvas').getContext('2d'); m.font = font;
+  const label = String(text).toUpperCase(); const tw = Math.ceil(m.measureText(label).width);
+  const padX = 22, dotW = dot ? 34 : 0, H = 64, W = tw + padX * 2 + dotW;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgba(255,255,255,0.94)'; g.strokeStyle = 'rgba(27,34,48,0.45)'; g.lineWidth = 2;
+  g.beginPath(); if (g.roundRect) g.roundRect(1, 1, W - 2, H - 2, 12); else g.rect(1, 1, W - 2, H - 2); g.fill(); g.stroke();
+  if (dot) { g.fillStyle = dot; g.beginPath(); g.arc(padX + 9, H / 2, 10, 0, Math.PI * 2); g.fill(); }
+  g.font = font; g.fillStyle = '#1B2230'; g.textBaseline = 'middle'; g.fillText(label, padX + dotW, H / 2 + 2);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false, depthTest: false }));
+  s.scale.set(height * W / H, height, 1); s.renderOrder = 9; return s;
+}
+// Draws one lexicon glyph onto a 2D canvas from the same shapes the phone UI uses.
+function drawGlyph(ctx, name, x, y, size, color) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(size / 100, size / 100);
+  ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = color; ctx.fillStyle = color;
+  const re = /<(path|circle|rect)([^>]*)\/>/g; let m;
+  while ((m = re.exec(GLYPH_SVG[name]))) {
+    const attr = k => { const r = new RegExp('\\b' + k + '="([^"]*)"').exec(m[2]); return r ? r[1] : null; };
+    let p;
+    if (m[1] === 'path') p = new Path2D(attr('d'));
+    else if (m[1] === 'circle') { p = new Path2D(); p.arc(+attr('cx'), +attr('cy'), +attr('r'), 0, Math.PI * 2); }
+    else { p = new Path2D(); p.rect(+attr('x'), +attr('y'), +attr('width'), +attr('height')); }
+    if (attr('fill') === 'currentColor') ctx.fill(p);
+    if (attr('stroke') !== 'none') ctx.stroke(p);
+  }
+  ctx.restore();
+}
+
+// ---------- Tilt input for physics ----------
+// gravityIn.g is gravity in camera space (unit vector); gravityIn.drag is a card-plane push from a finger drag.
+const gravityIn = { g: null, ref: null, drag: null, sign: 0, listening: false, last: 0 };
+function onMotion(e) {
+  const a = e.accelerationIncludingGravity; if (!a || a.x == null) return;
+  let x = a.x, y = a.y, z = a.z;
+  if (!gravityIn.sign) {
+    const dom = Math.abs(y) > Math.abs(z) ? y : z;
+    if (Math.abs(dom) < 4) return;
+    gravityIn.sign = dom > 0 ? -1 : 1;
+  }
+  x *= gravityIn.sign; y *= gravityIn.sign; z *= gravityIn.sign;
+  const ang = ((screen.orientation && screen.orientation.angle) || window.orientation || 0) * Math.PI / 180;
+  const rx = x * Math.cos(ang) + y * Math.sin(ang), ry = -x * Math.sin(ang) + y * Math.cos(ang);
+  const n = Math.hypot(rx, ry, z) || 1; const v = [rx / n, ry / n, z / n];
+  gravityIn.g = gravityIn.g ? gravityIn.g.map((q, i) => q * 0.75 + v[i] * 0.25) : v;
+  gravityIn.last = performance.now();
+}
+function startMotion() {
+  if (gravityIn.listening) return Promise.resolve(true);
+  const go = () => { window.addEventListener('devicemotion', onMotion); gravityIn.listening = true; return true; };
+  if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+    return DeviceMotionEvent.requestPermission().then(r => (r === 'granted' ? go() : false)).catch(() => false);
+  }
+  return Promise.resolve(typeof DeviceMotionEvent !== 'undefined' ? go() : false);
+}
+const needsMotionPermission = () => typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function' && !gravityIn.listening;
+// Card-plane acceleration (x, z) from the phone's sensor or a finger drag. G is a full 90° tilt in card units per second squared.
+function tiltAccel(G) {
+  if (gravityIn.drag) return [gravityIn.drag[0] * G * 0.4, gravityIn.drag[1] * G * 0.4];
+  const g = gravityIn.g; if (!g || performance.now() - gravityIn.last > 1500) return [0, 0];
+  let ax, az;
+  if (AR.previewing) {
+    // No real card: the phone screen is the board, levelled to how it was held when the maze opened.
+    if (!gravityIn.ref) gravityIn.ref = g.slice();
+    ax = g[0] - gravityIn.ref[0]; az = -(g[1] - gravityIn.ref[1]);
+  } else {
+    const m = AR.holo.matrixWorld.elements;
+    ax = m[0] * g[0] + m[1] * g[1] + m[2] * g[2];
+    az = m[8] * g[0] + m[9] * g[1] + m[10] * g[2];
+  }
+  const mag = Math.hypot(ax, az); if (mag < 0.04) return [0, 0];
+  const k = (mag - 0.04) / mag; return [ax * k * G, az * k * G];
+}
+
+// ---------- Relic models, one per node ----------
+function holoKit() {
+  const own = [];
+  const keep = m => { own.push(m); return m; };
+  const P = {
+    white: keep(new THREE.MeshStandardMaterial({ color: PAPER, roughness: 0.85, metalness: 0, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })),
+    navy: keep(new THREE.MeshStandardMaterial({ color: NAVY, roughness: 1, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })),
+    graphite: keep(new THREE.MeshStandardMaterial({ color: 0x3a4252, roughness: 0.5 })),
+    glass: keep(new THREE.MeshStandardMaterial({ color: 0xdfe6ec, roughness: 0.4, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide })),
+    line: keep(new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.85 })),
+    hair: keep(new THREE.LineBasicMaterial({ color: 0x5a6372, transparent: true, opacity: 0.5 }))
+  };
+  const group = new THREE.Group(), rise = new THREE.Group(); group.add(rise);
+  const at = (m, x, y, z) => { m.position.set(x, y, z); return m; };
+  const solid = (geo, mat = P.white, parent = rise) => {
+    const m = new THREE.Mesh(geo, mat); parent.add(m);
+    const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), P.line); m.add(e); return m;
+  };
+  const wire = (geo, mat = P.line, parent = rise) => { const w = new THREE.LineSegments(new THREE.EdgesGeometry(geo), mat); parent.add(w); return w; };
+  const ring = (ri, ro, h) => { const s = new THREE.Shape(); s.absarc(0, 0, ro, 0, Math.PI * 2, false); const hole = new THREE.Path(); hole.absarc(0, 0, ri, 0, Math.PI * 2, true); s.holes.push(hole); const g = new THREE.ExtrudeGeometry(s, { depth: h, bevelEnabled: false, curveSegments: 72 }); g.rotateX(-Math.PI / 2); return g; };
+  const base = r => {
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(r, 96), P.navy); floor.rotation.x = -Math.PI / 2; group.add(floor);
+    solid(ring(r, r + 0.05, 0.05), P.white, group);
+    group.add(circleLine(r * 0.82, 0.002, P.hair));
+  };
+  const label = (text, x, y, z, h, dot) => { const s = textSprite(text, h, dot); s.position.set(x, y, z); group.add(s); return s; };
+  return { P, group, rise, at, solid, wire, ring, base, label };
+}
+
+// The Descent: tilt the card to roll the ball through the maze to the hole at the core. Two hidden trapdoors.
+const BALL = { R: [0.95, 0.71, 0.47, 0.26], t: 0.034, h: 0.06, rb: 0.038, hole: 0.11, G: 60 };
+function buildBallMaze() {
+  const K = holoKit(); const { P, at } = K; const mz = state.round.descent; const { R, t, h, rb } = BALL;
+  const clock = (r, a) => [r * Math.sin(a), -r * Math.cos(a)];
+  const rad = d => d * Math.PI / 180;
+  const midR = [(R[0] + R[1]) / 2, (R[1] + R[2]) / 2, (R[2] + R[3]) / 2];
+  // floor, rim and core
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(R[0], 96), P.navy); floor.rotation.x = -Math.PI / 2; K.group.add(floor);
+  K.solid(K.ring(R[0], R[0] + 0.06, h * 1.5), P.white, K.group);
+  for (const r of midR) K.group.add(circleLine(r, 0.002, P.hair));
+  const holeMat = new THREE.MeshBasicMaterial({ color: 0x07090d, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+  const hole = new THREE.Mesh(new THREE.CircleGeometry(BALL.hole, 48), holeMat); hole.rotation.x = -Math.PI / 2; hole.position.y = 0.001; K.group.add(hole);
+  const lipMat = new THREE.MeshBasicMaterial({ color: PAPER, side: THREE.DoubleSide });
+  const lip = new THREE.Mesh(new THREE.RingGeometry(BALL.hole, BALL.hole + 0.012, 48), lipMat); lip.rotation.x = -Math.PI / 2; lip.position.y = 0.002; K.group.add(lip);
+  // walls: arcs from the gaps, plus radial walls. Collision shapes are built from the same data.
+  const arcs = [], segs = [];
+  const arcShape = (r, a1, a2) => {
+    const s = new THREE.Shape(); const ta = Math.PI / 2 - a2, tb = Math.PI / 2 - a1;
+    s.absarc(0, 0, r + t / 2, ta, tb, false); s.absarc(0, 0, r - t / 2, tb, ta, true);
+    const g = new THREE.ExtrudeGeometry(s, { depth: h, bevelEnabled: false, curveSegments: 16 }); g.rotateX(-Math.PI / 2); return g;
+  };
+  for (let b = 0; b < 3; b++) {
+    const r = R[b + 1];
+    for (let s = 0; s < 12; s++) {
+      if (mz.gaps[b].includes(s)) continue;
+      const a1 = rad(s * 30 - 15), a2 = rad(s * 30 + 15);
+      K.solid(arcShape(r, a1, a2)); arcs.push({ r, a1, a2 });
+    }
+  }
+  for (let i = 0; i < 3; i++) for (const b of mz.walls[i]) {
+    const a = rad(b * 30 + 15); const r1 = R[i + 1], r2 = R[i];
+    const len = r2 - r1, mid = (r1 + r2) / 2;
+    const m = K.solid(new THREE.BoxGeometry(t, h, len)); m.position.set(mid * Math.sin(a), h / 2, -mid * Math.cos(a)); m.rotation.y = Math.PI - a;
+    const [x1, z1] = clock(r1, a), [x2, z2] = clock(r2, a); segs.push({ x1, z1, x2, z2 });
+  }
+  for (let s = 0; s < 12; s++) {
+    const [x, z] = clock(R[0] + 0.17, rad(s * 30));
+    K.label(String(hourOf(s)), x, 0.05, z, s % 3 === 0 ? 0.075 : 0.06);
+  }
+  // ball and its contact shadow
+  const ballMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.28, metalness: 0.15 });
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(rb, 32, 24), ballMat); K.group.add(ball);
+  const ringMark = new THREE.Mesh(new THREE.TorusGeometry(rb * 0.62, rb * 0.08, 6, 24), new THREE.MeshBasicMaterial({ color: 0xe0457b })); ball.add(ringMark);
+  const shadow = new THREE.Mesh(new THREE.CircleGeometry(rb * 1.15, 24), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35, depthWrite: false }));
+  shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.003; K.group.add(shadow);
+  // physics
+  const startXZ = () => clock(midR[0], rad(mz.start * 30));
+  const phys = { p: startXZ(), v: [0, 0], mode: 'roll', at: 0, sink: 0 };
+  if (state.solved.has('descent')) { phys.p = [0, 0]; phys.mode = 'won'; phys.sink = 1; }
+  const trapXZ = mz.traps.map(([r, s]) => clock(midR[r], rad(s * 30)));
+  const reach = rb + t / 2;
+  const push = (qx, qz) => {
+    const dx = phys.p[0] - qx, dz = phys.p[1] - qz, d = Math.hypot(dx, dz);
+    if (d >= reach || d < 1e-6) return;
+    const nx = dx / d, nz = dz / d; phys.p = [qx + nx * reach, qz + nz * reach];
+    const vn = phys.v[0] * nx + phys.v[1] * nz;
+    if (vn < 0) { phys.v[0] -= 1.35 * vn * nx; phys.v[1] -= 1.35 * vn * nz; if (vn < -0.35) buzz(8); }
+  };
+  const inArc = (ang, a1, a2) => { const tw = Math.PI * 2; let x = ((ang - a1) % tw + tw) % tw; return x <= ((a2 - a1) % tw + tw) % tw || a2 - a1 >= tw - 1e-6; };
+  const collide = () => {
+    const [x, z] = phys.p; const r = Math.hypot(x, z); const ang = Math.atan2(x, -z);
+    const maxR = R[0] - reach; if (r > maxR) { const nx = x / r, nz = z / r; phys.p = [nx * maxR, nz * maxR]; const vn = phys.v[0] * nx + phys.v[1] * nz; if (vn > 0) { phys.v[0] -= 1.35 * vn * nx; phys.v[1] -= 1.35 * vn * nz; } }
+    for (const A of arcs) {
+      if (Math.abs(r - A.r) > reach + 0.02) continue;
+      if (inArc(ang, A.a1, A.a2)) push(...clock(A.r, ang));
+      else { const e1 = clock(A.r, A.a1), e2 = clock(A.r, A.a2); push(...(Math.hypot(x - e1[0], z - e1[1]) < Math.hypot(x - e2[0], z - e2[1]) ? e1 : e2)); }
+    }
+    for (const S of segs) {
+      const ex = S.x2 - S.x1, ez = S.z2 - S.z1; const L2 = ex * ex + ez * ez;
+      let u = ((phys.p[0] - S.x1) * ex + (phys.p[1] - S.z1) * ez) / L2; u = Math.max(0, Math.min(1, u));
+      push(S.x1 + ex * u, S.z1 + ez * u);
+    }
+  };
+  const cellName = ([r, s]) => `${RING_NAMES[r]} ${hourOf(s)}`;
+  const model = Object.assign(K, {
+    radius: R[0], faceCamera: false, locked: true, lift: 0.004, phys,
+    update(now, dt) {
+      if (phys.mode === 'roll') {
+        const [ax, az] = tiltAccel(BALL.G); const n = 4, hstep = dt / n;
+        for (let i = 0; i < n; i++) {
+          phys.v[0] += ax * hstep; phys.v[1] += az * hstep;
+          const damp = Math.exp(-1.1 * hstep); phys.v[0] *= damp; phys.v[1] *= damp;
+          const sp = Math.hypot(phys.v[0], phys.v[1]); if (sp > 1.6) { phys.v[0] *= 1.6 / sp; phys.v[1] *= 1.6 / sp; }
+          phys.p[0] += phys.v[0] * hstep; phys.p[1] += phys.v[1] * hstep; collide();
+        }
+        ball.rotation.x += phys.v[1] * dt / rb; ball.rotation.z -= phys.v[0] * dt / rb;
+        const hit = trapXZ.findIndex(([tx, tz]) => Math.hypot(phys.p[0] - tx, phys.p[1] - tz) < 0.09);
+        if (hit >= 0) { phys.mode = 'fall'; phys.at = now; phys.p = trapXZ[hit].slice(); addStrike(`The ball dropped through a trapdoor at ${cellName(mz.traps[hit])}`); }
+        else if (Math.hypot(phys.p[0], phys.p[1]) < BALL.hole - rb * 0.4) { phys.mode = 'won'; phys.at = now; phys.p = [0, 0]; markSolved('descent', 'The ball reached the core. The Descent is open'); }
+      }
+      if (phys.mode === 'fall' || phys.mode === 'won') {
+        phys.sink = Math.min(1, (now - phys.at) / 450);
+        if (phys.mode === 'fall' && now - phys.at > 900) { phys.p = startXZ(); phys.v = [0, 0]; phys.mode = 'roll'; phys.sink = 0; }
+      }
+      ball.position.set(phys.p[0], rb - phys.sink * rb * 2.4, phys.p[1]);
+      ball.visible = phys.sink < 1;
+      shadow.position.set(phys.p[0], 0.003, phys.p[1]); shadow.visible = phys.sink < 0.3;
+      lipMat.color.setHex(state.solved.has('descent') ? OK_GREEN : PAPER);
+    }
+  });
+  return model;
+}
+
+// The Conduits: a loom of strands in this round's colours, numbered left to right.
+function buildConduits() {
+  const K = holoKit(); const { P, at } = K; const strands = state.round.conduits.strands; const n = strands.length;
+  K.base(0.92);
+  const w = 1.3, H = 0.78, y0 = 0.16, x = i => -w / 2 + w * (i + 0.5) / n;
+  for (const y of [y0, y0 + H]) at(K.solid(new THREE.BoxGeometry(w + 0.26, 0.05, 0.09)), 0, y, 0);
+  for (const sx of [-1, 1]) {
+    at(K.solid(new THREE.BoxGeometry(0.05, H, 0.05)), sx * (w / 2 + 0.13), y0 + H / 2, 0);
+    at(K.wire(new THREE.OctahedronGeometry(0.07)), sx * (w / 2 + 0.13), y0 + H + 0.11, 0);
+  }
+  const beads = [];
+  strands.forEach((s, i) => {
+    const core = at(new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, H, 16), new THREE.MeshStandardMaterial({ color: COLOUR_HEX[s.colour], roughness: 0.5 })), x(i), y0 + H / 2, 0);
+    K.rise.add(core);
+    const bead = at(new THREE.Mesh(new THREE.SphereGeometry(0.03, 12, 10), P.graphite), x(i), y0, 0); K.rise.add(bead); beads.push(bead);
+    K.label(String(i + 1), x(i), y0 - 0.1, 0.1, 0.075);
+    K.label(s.colour, x(i), y0 + H + 0.08 + (i % 2) * 0.09, 0, 0.06, COLOUR_HEX[s.colour]);
+  });
+  return Object.assign(K, { radius: 0.92, faceCamera: true, update(now) { beads.forEach((b, i) => { b.position.y = y0 + H * (((now / 1700) + i * 0.17) % 1); }); } });
+}
+
+// The Resonator: a wireframe crystal inside a grey ring; its waveform follows the phone's tuner.
+function buildResonator() {
+  const K = holoKit(); const { P, at } = K; const cy = 0.66;
+  K.base(0.9);
+  at(K.solid(new THREE.CylinderGeometry(0.16, 0.26, 0.12, 6)), 0, 0.06, 0);
+  at(K.solid(new THREE.CylinderGeometry(0.02, 0.02, cy - 0.36, 8)), 0, 0.12 + (cy - 0.36) / 2, 0);
+  const crystal = new THREE.Group(); crystal.position.y = cy; crystal.scale.set(1, 1.9, 1); K.rise.add(crystal);
+  const fill = new THREE.Mesh(new THREE.OctahedronGeometry(0.2), P.glass); crystal.add(fill);
+  const wireMat = new THREE.LineBasicMaterial({ color: INK }); const cw = K.wire(new THREE.OctahedronGeometry(0.2), wireMat, crystal);
+  for (const v of [[0, 0.2, 0], [0, -0.2, 0], [0.2, 0, 0], [-0.2, 0, 0], [0, 0, 0.2], [0, 0, -0.2]]) { const d = new THREE.Mesh(new THREE.SphereGeometry(0.018, 10, 8), P.graphite); d.position.set(...v); d.scale.set(1, 1 / 1.9, 1); crystal.add(d); }
+  const greyRing = at(new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.028, 16, 96), new THREE.MeshStandardMaterial({ color: 0x80858f, roughness: 0.6 })), 0, cy, 0); K.rise.add(greyRing);
+  const orbits = [[0.38, 1.2, 0.2], [0.6, -0.7, 0.5]].map(([r, rx, rz]) => { const hld = at(new THREE.Group(), 0, cy, 0); hld.rotation.set(rx, 0, rz); K.rise.add(hld); const l = circleLine(r, 0, P.hair); l.rotation.x = Math.PI / 2; hld.add(l); const dot = at(new THREE.Mesh(new THREE.SphereGeometry(0.02, 10, 8), P.graphite), r, 0, 0); l.add(dot); return l; });
+  const N = 180; const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 3), 3));
+  const wave = at(new THREE.LineLoop(wg, P.line), 0, cy, 0); K.rise.add(wave);
+  return Object.assign(K, { radius: 0.9, faceCamera: false, update(now) {
+    const solved = state.solved.has('resonator'); const f = state.tuner; const t = now / 1000;
+    const speed = solved ? 0.15 : 0.4 + (f - 400) / 200 * 2.2;
+    greyRing.rotation.x = Math.PI / 2 + 0.25 * Math.sin(t * 0.6); greyRing.rotation.z = t * speed * 0.4;
+    orbits.forEach((o, i) => { o.rotation.z = t * speed * (i ? -1.3 : 1); });
+    crystal.rotation.y = t * speed * 0.5;
+    const lobes = 3 + Math.round((f - 400) / 25), amp = solved ? 0 : 0.045, pos = wg.attributes.position;
+    for (let i = 0; i < N; i++) { const a = i / N * Math.PI * 2, r = 0.72 + amp * Math.sin(lobes * a + t * speed * 3); pos.setXYZ(i, r * Math.sin(a), 0, -r * Math.cos(a)); }
+    pos.needsUpdate = true;
+    wireMat.color.setHex(solved ? OK_GREEN : INK);
+  } });
+}
+
+// The Glyph Lock: an upright white tablet engraved with the lexicon; entered glyphs turn green.
+function buildGlyphTablet() {
+  const K = holoKit(); const { at } = K; const y0 = 0.16, TH = 1.2;
+  K.base(0.9);
+  at(K.solid(new THREE.BoxGeometry(1.1, TH, 0.06)), 0, y0 + TH / 2, 0);
+  at(K.solid(new THREE.BoxGeometry(1.24, 0.06, 0.16)), 0, y0 - 0.03, 0);
+  for (const sx of [-1, 1]) {
+    at(K.solid(new THREE.CylinderGeometry(0.03, 0.03, TH + 0.12, 10)), sx * 0.66, y0 + (TH + 0.12) / 2, 0);
+    at(K.wire(new THREE.OctahedronGeometry(0.065)), sx * 0.66, y0 + TH + 0.21, 0);
+  }
+  const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 560;
+  const tex = new THREE.CanvasTexture(canvas);
+  const face = at(new THREE.Mesh(new THREE.PlaneGeometry(1.04, 1.14), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })), 0, y0 + TH / 2, 0.032);
+  face.renderOrder = 3; K.rise.add(face);
+  let drawn = '';
+  const paint = () => {
+    const g = canvas.getContext('2d'); g.clearRect(0, 0, canvas.width, canvas.height);
+    const order = state.round.glyph.answer; const solved = state.solved.has('glyph');
+    const cw = canvas.width / 4, ch = canvas.height / 4;
+    GLYPH_GRID.forEach((row, r) => row.forEach((name, c) => {
+      const k = order.indexOf(name); const lit = solved ? k >= 0 : k >= 0 && k < state.glyphStep;
+      const size = cw * 0.48, x = c * cw + (cw - size) / 2, y = r * ch + 16;
+      drawGlyph(g, name, x, y, size, lit ? '#1A9C5A' : '#1B2230');
+      g.font = '500 17px "IBM Plex Mono", ui-monospace, Menlo, monospace'; g.textAlign = 'center';
+      g.fillStyle = lit ? '#1A9C5A' : '#4A5361'; g.fillText(name.toUpperCase(), c * cw + cw / 2, y + size + 26);
+      if (lit) { g.font = '600 24px "IBM Plex Mono", ui-monospace, monospace'; g.fillText(String(k + 1), c * cw + cw - 16, y + 18); }
+    }));
+    tex.needsUpdate = true;
+  };
+  return Object.assign(K, { radius: 0.9, faceCamera: true, update() {
+    const key = state.glyphStep + (state.solved.has('glyph') ? 's' : '');
+    if (key !== drawn) { drawn = key; paint(); }
+  } });
+}
+
+// The Echo Chamber: four numbered pads under an orbit of the four rule shapes, with echoing rings.
+function buildEcho() {
+  const K = holoKit(); const { P, at } = K; const cy = 0.8;
+  K.base(0.92);
+  [-0.5, -0.17, 0.17, 0.5].forEach((x, i) => {
+    at(K.solid(new THREE.CylinderGeometry(0.11, 0.13, 0.12, 32)), x, 0.06, 0);
+    K.label(String(i + 1), x, 0.03, 0.3, 0.075);
+  });
+  at(K.solid(new THREE.CylinderGeometry(0.018, 0.018, cy - 0.2, 8)), 0, 0.12 + (cy - 0.2) / 2 - 0.06, 0);
+  const orbit = at(new THREE.Group(), 0, cy, 0); K.rise.add(orbit);
+  const shape = pts => { const s = new THREE.Shape(); pts.forEach(([x, y], i) => (i ? s.lineTo(x, y) : s.moveTo(x, y))); s.closePath(); return s; };
+  const circle = new THREE.Shape(); circle.absarc(0, 0, 0.1, 0, Math.PI * 2, false);
+  const a = 0.032, b = 0.11;
+  [shape([[0, 0.12], [0.11, -0.08], [-0.11, -0.08]]), shape([[-0.09, -0.09], [0.09, -0.09], [0.09, 0.09], [-0.09, 0.09]]), circle,
+   shape([[-a, b], [a, b], [a, a], [b, a], [b, -a], [a, -a], [a, -b], [-a, -b], [-a, -a], [-b, -a], [-b, a], [-a, a]])].forEach((s, i) => {
+    const geo = new THREE.ExtrudeGeometry(s, { depth: 0.03, bevelEnabled: false, curveSegments: 24 }); geo.center();
+    const ang = i * Math.PI / 2; at(K.solid(geo, P.white, orbit), 0.34 * Math.sin(ang), 0, 0.34 * Math.cos(ang));
+  });
+  const core = at(K.wire(new THREE.IcosahedronGeometry(0.09, 0)), 0, cy, 0);
+  const echoes = [0, 1, 2].map(() => { const m = new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.6 }); const l = circleLine(0.2, 0, m, 64); l.position.y = cy; K.rise.add(l); return l; });
+  return Object.assign(K, { radius: 0.92, faceCamera: true, update(now) {
+    const t = now / 1000; orbit.rotation.y = t * 0.6;
+    orbit.children.forEach(m => { m.rotation.y = -orbit.rotation.y; });
+    core.rotation.set(t * 0.7, t, 0);
+    echoes.forEach((r, i) => { const u = (t / 1.8 + i / 3) % 1; const s = 0.6 + u * 2.4; r.scale.set(s, 1, s); r.material.opacity = 0.65 * (1 - u); });
+  } });
+}
+
+// The Pressure Vent: three labelled white vent stacks venting steam. Decorative: no gauge levels shown.
+function buildVent() {
+  const K = holoKit(); const { P, at } = K; const HS = 0.62;
+  K.base(0.92);
+  const stacks = [];
+  [['Left', -0.46], ['Centre', 0], ['Right', 0.46]].forEach(([name, x], i) => {
+    at(K.solid(new THREE.CylinderGeometry(0.12, 0.15, HS, 32)), x, HS / 2, 0);
+    const band = at(circleLine(0.17, 0, P.line, 48), x, HS / 2, 0); K.rise.add(band);
+    K.label(name, x, 0.03, 0.3, 0.07);
+    const M = 18; const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(M * 3), 3));
+    const pts = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0x8a93a3, size: 0.032, transparent: true, opacity: 0.75, depthWrite: false })); K.rise.add(pts);
+    stacks.push({ x, band, pts, seeds: Array.from({ length: M }, () => [Math.random(), Math.random() * 6.28, 0.3 + Math.random() * 0.5]) });
+  });
+  return Object.assign(K, { radius: 0.92, faceCamera: true, update(now) {
+    const t = now / 1000;
+    stacks.forEach((s, i) => {
+      s.band.position.y = HS / 2 + 0.22 * Math.sin(t * 1.4 + i * 1.7);
+      const pos = s.pts.geometry.attributes.position;
+      s.seeds.forEach(([ph, a, sp], j) => { const u = (t * sp + ph) % 1; const r = 0.05 * (1 + u * 1.5); pos.setXYZ(j, s.x + Math.sin(a + u * 3) * r, HS + u * 0.5, Math.cos(a + u * 3) * r); });
+      pos.needsUpdate = true;
+    });
+  } });
+}
+
+const MODEL_BUILDERS = { conduits: buildConduits, resonator: buildResonator, glyph: buildGlyphTablet, descent: buildBallMaze, echo: buildEcho, vent: buildVent };
+
+// ---------- Hologram touch controls ----------
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const pointers = new Map(); let gesture = null, lastTap = 0;
+const stage = $('.cam-stage');
+function resetView() { Object.assign(view3d, { spin: 0, tilt: 0, zoom: 1 }); }
+function beginGesture() {
+  const pts = [...pointers.values()];
+  if (pts.length === 1) gesture = { type: 'drag', x: pts[0].x, y: pts[0].y, spin: view3d.spin, tilt: view3d.tilt };
+  else if (pts.length >= 2) { const [a, b] = pts; gesture = { type: 'pinch', d: Math.hypot(a.x - b.x, a.y - b.y) || 1, ang: Math.atan2(b.y - a.y, b.x - a.x), zoom: view3d.zoom, spin: view3d.spin }; }
+  else gesture = null;
+}
+const holoActive = () => state.view === 'holo' && state.active && AR.model;
+// On physics nodes a finger drag pushes along the card instead of turning the hologram.
+function dragToCard(dx, dy) {
+  const m = AR.holo.matrixWorld.elements; const len = Math.hypot(dx, dy); if (len < 4) return [0, 0];
+  let x = m[0] * dx - m[1] * dy, z = m[8] * dx - m[9] * dy; const n = Math.hypot(x, z) || 1; const k = Math.min(1, len / 90);
+  return [x / n * k, z / n * k];
+}
+stage.addEventListener('pointerdown', e => {
+  if (!holoActive()) return;
+  try { stage.setPointerCapture(e.pointerId); } catch (err) {}
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); beginGesture();
+  if (AR.model.locked) { gravityIn.drag = [0, 0]; return; }
+  if (pointers.size === 1) { const now = performance.now(); if (now - lastTap < 300) resetView(); lastTap = now; }
+});
+stage.addEventListener('pointermove', e => {
+  if (!pointers.has(e.pointerId) || !gesture) return;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  const pts = [...pointers.values()];
+  if (AR.model && AR.model.locked) { if (gesture.type === 'drag') gravityIn.drag = dragToCard(pts[0].x - gesture.x, pts[0].y - gesture.y); return; }
+  if (gesture.type === 'drag' && pts.length === 1) {
+    view3d.spin = gesture.spin + (pts[0].x - gesture.x) * 0.008;
+    view3d.tilt = clamp(gesture.tilt - (pts[0].y - gesture.y) * 0.006, 0, 1.3);
+  } else if (gesture.type === 'pinch' && pts.length >= 2) {
+    const [a, b] = pts;
+    view3d.zoom = clamp(gesture.zoom * Math.hypot(a.x - b.x, a.y - b.y) / gesture.d, 0.5, 2.5);
+    view3d.spin = gesture.spin - (Math.atan2(b.y - a.y, b.x - a.x) - gesture.ang);
+  }
+});
+['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => stage.addEventListener(t, e => { if (pointers.delete(e.pointerId)) { beginGesture(); if (!pointers.size) gravityIn.drag = null; } }));
+stage.addEventListener('wheel', e => { if (!holoActive() || AR.model.locked) return; e.preventDefault(); view3d.zoom = clamp(view3d.zoom * Math.exp(-e.deltaY * 0.0015), 0.5, 2.5); }, { passive: false });
+$('#holo-reset').addEventListener('click', resetView);
+
+// ---------- Manual entry ----------
+$('#shard-pick').innerHTML = [1, 2, 3, 4, 5, 6, 7, 8].map(n => `<button class="btn" type="button" data-n="${n}">${n}</button>`).join('');
+$$('.manual-open').forEach(b => b.addEventListener('click', () => { const d = $('#manual'); d.showModal ? d.showModal() : d.setAttribute('open', ''); }));
+$('#manual-cancel').addEventListener('click', () => $('#manual').close());
+$('#shard-pick').addEventListener('click', e => {
+  const b = e.target.closest('[data-n]'); if (!b) return;
+  $('#manual').close(); $('#start-cam').hidden = true; onShard(Number(b.dataset.n), true);
+});
+$('#exit').addEventListener('click', () => { location.hash = 'home'; });
+
+// ---------- Shards sheet ----------
+function qrSvg(text, type = 2) {
+  if (typeof qrcode !== 'function') return '<p>QR library didn’t load. Reload the page.</p>';
+  const q = qrcode(type, 'M'); q.addData(text); q.make();
+  const n = q.getModuleCount(), m = 4; let d = '';
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c + m} ${r + m}h1v1h-1z`;
+  return `<svg class="qr" viewBox="0 0 ${n + 2 * m} ${n + 2 * m}" shape-rendering="crispEdges" role="img" aria-label="Code for ${text}"><rect width="100%" height="100%" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+}
+function renderShards() {
+  const grid = $('#shard-grid'); if (grid.childElementCount) return;
+  grid.innerHTML = [1, 2, 3, 4, 5, 6, 7, 8].map(n => `<div class="shard-card">${qrSvg('AETHER-SHARD-' + n)}<h2>Shard ${n}</h2><p>Project Aether // Data shard</p></div>`).join('');
+}
+$('#print-btn').addEventListener('click', () => window.print());
+
+// ---------- Test sheet ----------
+function renderTest() {
+  const input = $('#test-round');
+  if (!validCode(input.value.trim())) input.value = store.get('aether-round') || $('#round-input').value || newCode();
+  const code = Number(input.value); const r = makeRound(code);
+  const ans = html => `<details><summary>Show answer</summary><p style="margin:8px 0 0">${html}</p></details>`;
+  const moveWord = { right: 'right', left: 'left', in: 'step in' };
+  const dir = NODES.map(n => `<tr><td>${r.nodeSeal[n.id]}</td><td>Shard ${r.nodeShard[n.id]}</td><td>${n.name}</td><td>${ROLES[n.owner].name}</td></tr>`).join('');
+  $('#test-body').innerHTML = `
+  <section class="test-sec"><h2>Flight Director</h2><p>Round ${String(code).padStart(4, '0')}. The hull readings and the shard directory.</p>
+    <div class="test-card"><dl>
+      <dt>Case Number</dt><dd>${r.caseNumber}</dd>
+      <dt>Power cells</dt><dd><span class="cells">${r.cellStates.map(on => `<i class="${on ? 'on' : ''}"></i>`).join('')}</span> ${r.cells} charged</dd>
+      <dt>Sector sigil</dt><dd>${r.sigil}</dd></dl></div>
+    <div class="test-card"><h3>Directory</h3><div class="scroll-x"><table class="rule"><thead><tr><th>Seal word</th><th>Shard</th><th>Node</th><th>Specialist</th></tr></thead><tbody>${dir}</tbody></table></div>
+      <p class="muted" style="margin:10px 0 0">Shards ${r.deadShards.join(' and ')} show no signal this round.</p></div>
+  </section>
+  <section class="test-sec"><h2>Pathfinder</h2><p>What the Pathfinder sees in each node.</p>
+    <div class="test-card"><h3>The Conduits</h3><div class="scroll-x"><table class="rule"><thead><tr><th>Strand</th><th>Cap</th><th>Flickers</th></tr></thead><tbody>
+      ${r.conduits.strands.map((s, i) => `<tr><td>${i + 1}</td><td>${s.dot ? 'Solid dot' : 'Hollow ring'}</td><td>${s.flicker ? 'Yes' : 'No'}</td></tr>`).join('')}</tbody></table></div>
+      ${ans(`Sever strand${r.conduits.targets.length > 1 ? 's' : ''} ${r.conduits.targets.join(', ')}.`)}</div>
+    <div class="test-card"><h3>The Resonator</h3><p style="margin:0">Pulse pattern: ${pulseIcon(r.resonator.pattern)} <span class="muted">${PULSE_WORDS(r.resonator.pattern)}</span></p>
+      ${ans(`${r.resonator.freq} kilohertz.`)}</div>
+    <div class="test-card"><h3>The Glyph Lock</h3><div class="glyph-row">${r.glyph.glyphs.map(g => glyphSvg(g)).join('')}</div>
+      ${ans(r.glyph.answer.join(', ') + '.')}</div>
+    <div class="test-card"><h3>The Descent</h3><dl>
+      <dt>Ball starts</dt><dd>Outer ${hourOf(r.descent.start)}</dd>
+      <dt>Trapdoors</dt><dd>${r.descent.traps.map(([ring, s]) => `${RING_NAMES[ring]} ${hourOf(s)}`).join(' and ')}</dd></dl>
+      ${ans(`Safe route: ${r.descent.route.map(([ring, s]) => ring === 3 ? 'core' : `${RING_NAMES[ring]} ${hourOf(s)}`).join(', ')}.`)}</div>
+    <div class="test-card"><h3>The Echo Chamber</h3><div class="scroll-x"><table class="rule"><thead><tr><th>Stage</th><th>Shape</th><th>Pad labels, left to right</th></tr></thead><tbody>
+      ${r.echo.stages.map((s, i) => `<tr><td>${i + 1}</td><td>${shapeSvg(s.shape)}${s.shape}</td><td>${s.labels.join(', ')}</td></tr>`).join('')}</tbody></table></div>
+      ${ans(r.echo.stages.map((s, i) => `Stage ${i + 1}: position ${s.position} (label ${s.label})`).join('. ') + '.')}</div>
+    <div class="test-card"><h3>The Pressure Vent</h3><p style="margin:0">Gauges, left to right: ${r.vent.gauges.join(', ')}</p>
+      ${ans(`Vent the ${r.vent.answer} gauge.`)}</div>
+  </section>`;
+}
+$('#test-load').addEventListener('click', renderTest);
+
+// ---------- Live room ----------
+// Talks to the room server at /room/<round>/ws. If the page isn't served by it (claude.ai preview, GitHub Pages),
+// the first connection fails and the app quietly stays in offline mode.
+const Net = {
+  ws: null, round: null, role: null, online: false, everOnline: false, failed: false, state: null, offset: 0, retry: 0, timer: null,
+  deviceId: (() => { let v = store.get('aether-device'); if (!v) { v = Math.random().toString(36).slice(2, 12); store.set('aether-device', v); } return v; })(),
+  connect(round, role) {
+    if (this.round === round && this.role === role && (this.ws || this.timer)) return;
+    this.close(); this.round = round; this.role = role; this.retry = 0; this.failed = false; this.open();
+  },
+  open() {
+    this.timer = null;
+    if (!/^https?:$/.test(location.protocol)) { this.failed = true; this.setOnline(false); return; }
+    let ws;
+    const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/room/${String(this.round).padStart(4, '0')}/ws?role=${this.role}&id=${this.deviceId}`;
+    try { ws = new WebSocket(url); } catch (e) { this.failed = true; this.setOnline(false); return; }
+    this.ws = ws;
+    ws.onopen = () => { this.everOnline = true; this.failed = false; this.retry = 0; this.setOnline(true); this.send({ type: 'hello' }); };
+    ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch (err) { return; } if (m.type === 'state') this.receive(m.state); };
+    ws.onclose = () => {
+      if (this.ws !== ws) return;
+      this.ws = null; this.setOnline(false);
+      if (!this.everOnline) { this.failed = true; onNetChange(); return; }
+      if (this.round !== null) this.timer = setTimeout(() => this.open(), Math.min(8000, 700 * 2 ** this.retry++));
+    };
+  },
+  close() {
+    clearTimeout(this.timer); this.timer = null;
+    const ws = this.ws; this.ws = null; this.round = null; this.role = null; this.state = null;
+    if (ws) { try { ws.close(); } catch (e) {} }
+    this.setOnline(false);
+  },
+  send(m) { if (this.ws && this.ws.readyState === 1) { this.ws.send(JSON.stringify(m)); return true; } return false; },
+  receive(st) { this.offset = st.serverNow - Date.now(); this.state = st; onRoomState(st); },
+  remaining() {
+    const s = this.state; if (!s) return null;
+    if (s.phase !== 'live') return s.remainingAtMark;
+    return Math.max(0, s.remainingAtMark - (Date.now() + this.offset - s.markAt) * s.rate);
+  },
+  setOnline(v) { const changed = v !== this.online; this.online = v; if (changed) onNetChange(); }
+};
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && Net.round !== null && !Net.ws && Net.everOnline) { clearTimeout(Net.timer); Net.open(); }
+});
+const fmtClock = ms => { const t = Math.ceil(ms / 1000); return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; };
+const PHASE_WORD = { lobby: 'Lobby', live: 'Live', won: 'Core breached', lost: 'Link lost' };
+function clockText() {
+  const s = Net.state; if (!s) return '';
+  if (s.phase === 'live') return fmtClock(Net.remaining());
+  if (s.phase === 'lobby') return 'Lobby';
+  return s.phase === 'won' ? 'Won' : 'Lost';
+}
+function onNetChange() {
+  if (document.body.dataset.view === 'director') renderDirector();
+  if (document.body.dataset.view === 'field') $('#clock').hidden = !Net.online;
+}
+function onRoomState(st) {
+  if (document.body.dataset.view === 'director') { renderDirector(); return; }
+  if (document.body.dataset.view !== 'field') return;
+  $('#clock').hidden = false;
+  if (state.epoch === undefined || state.epoch === null) state.epoch = st.epoch;
+  else if (st.epoch !== state.epoch) {
+    state.epoch = st.epoch;
+    Object.assign(state, { opened: [], solved: new Set(), glyphStep: 0, tuner: 500 });
+    closeNode(); renderChips(); toast('The Flight Director reset the round', '', 'reset' + st.epoch);
+  }
+  if (st.strikes > state.strikes && state.lastSeenStrikes !== undefined && st.strikes > state.lastSeenStrikes && !state.ownStrikePending) toast(`Strike ${st.strikes} of 3 from the crew`, 'bad', 'crewstrike' + st.strikes);
+  state.ownStrikePending = false; state.lastSeenStrikes = st.strikes;
+  state.strikes = st.strikes; renderStrikes();
+  let changed = false; st.solved.forEach(n => { if (!state.solved.has(n)) { state.solved.add(n); changed = true; } });
+  if (changed) renderChips();
+  const over = st.phase === 'won' || st.phase === 'lost';
+  $('#lost').hidden = !over; $('#lost').classList.toggle('won', st.phase === 'won');
+  if (over) {
+    $('#lost-title').textContent = st.phase === 'won' ? 'Core breached' : 'Link lost';
+    $('#lost-text').textContent = st.phase === 'won' ? 'All five nodes are open. The Monolith is yours.' : `${st.outcome || 'The link failed'}. The Flight Director can reset the round.`;
+  }
+}
+
+// ---------- Flight Director ----------
+let dirRound = null, dirRoundData = null;
+function enterDirector() {
+  const code = currentCode();
+  if (dirRound !== code) { dirRound = code; dirRoundData = makeRound(code); }
+  $('#dir-round').textContent = `Mission control // Round ${String(code).padStart(4, '0')}`;
+  $('#dir-code').textContent = String(code).padStart(4, '0');
+  const join = `${location.origin}${location.pathname}?round=${String(code).padStart(4, '0')}`;
+  $('#dir-qr').innerHTML = qrSvg(join, 0);
+  ['case', 'cells', 'sigil'].forEach(k => { const el = $('#hull-' + k); el.value = store.get(`aether-hull-${code}-${k}`) || ''; });
+  Net.connect(code, 'director');
+  show('director'); renderDirector();
+}
+function renderDirector() {
+  if (dirRound === null) return;
+  const st = Net.state, r = dirRoundData;
+  $('#dir-offline').hidden = !Net.failed;
+  const phase = st ? st.phase : 'lobby';
+  $('#dir-phase').textContent = st ? PHASE_WORD[phase] : (Net.failed ? 'Offline' : 'Connecting');
+  $('#dir-phase').dataset.phase = phase;
+  $('#dir-start').disabled = !st || phase !== 'lobby';
+  $('#dir-reset').disabled = !st || phase === 'lobby';
+  $('#dir-length').disabled = !st || phase !== 'lobby';
+  if (st) $('#dir-length').value = String(st.durationMs);
+  const strikes = st ? st.strikes : 0;
+  $$('#dir-strikes i').forEach((el, i) => el.classList.toggle('on', i < strikes));
+  $('#dir-strikes').setAttribute('aria-label', `Strikes: ${strikes} of 3`);
+  const seen = {}; (st ? st.players : []).forEach(p => { seen[p.id] = p; });
+  const crew = ['xeno', 'astro', 'pathfinder'].map(role => {
+    const on = Object.values(seen).some(p => p.role === role);
+    return `<li class="${on ? 'on' : ''}">${ROLE_TITLES[role]}<span>${on ? 'Connected' : 'Waiting'}</span></li>`;
+  });
+  $('#dir-crew').innerHTML = crew.join('');
+  const solved = new Set(st ? st.solved : []);
+  $('#dir-nodes').innerHTML = `<thead><tr><th>Seal word</th><th>Shard</th><th>Node</th><th>Specialist</th><th>Status</th></tr></thead><tbody>${
+    NODES.map(n => `<tr><td>${r.nodeSeal[n.id]}</td><td>${r.nodeShard[n.id]}</td><td>${n.name}</td><td>${ROLES[n.owner].name}</td><td>${
+      n.id === 'vent' ? '<span class="status-dot">Interrupt</span>' : `<span class="status-dot${solved.has(n.id) ? ' done' : ''}">${solved.has(n.id) ? 'Open' : 'Sealed'}</span>`}</td></tr>`).join('')
+  }</tbody>`;
+  const log = st ? st.log.slice().reverse() : [];
+  $('#dir-log').innerHTML = log.map(e => `<li>[${fmtClock(e.t)}] <b>${escapeHtml(e.who)}</b> // ${escapeHtml(e.text)}</li>`).join('');
+}
+const ROLE_TITLES = { xeno: 'Xenolinguist', astro: 'Astrophysicist', pathfinder: 'Pathfinder', director: 'Flight Director' };
+const escapeHtml = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+$('#dir-start').addEventListener('click', () => Net.send({ type: 'start' }));
+$('#dir-reset').addEventListener('click', () => { if (confirm('Reset this round for the whole crew?')) Net.send({ type: 'reset' }); });
+$('#dir-new').addEventListener('click', () => { const v = newCode(); $('#round-input').value = v; store.set('aether-round', v); enterDirector(); });
+$('#dir-length').addEventListener('change', e => Net.send({ type: 'length', durationMs: Number(e.target.value) }));
+['case', 'cells', 'sigil'].forEach(k => $('#hull-' + k).addEventListener('input', e => store.set(`aether-hull-${dirRound}-${k}`, e.target.value)));
+function tickDirector() {
+  const el = $('#dir-clock'); const st = Net.state;
+  if (!st) { el.textContent = '--:--'; return; }
+  const ms = Net.remaining(); el.textContent = fmtClock(ms);
+  el.classList.toggle('alert', st.phase === 'live' && ms < 60000);
+}
+
+// ---------- Home ----------
+tickRing($('#reticle-ticks'), 44, 56);
+(function initHome() {
+  const fromLink = new URLSearchParams(location.search).get('round');
+  if (validCode(fromLink || '')) store.set('aether-round', fromLink);
+  const saved = store.get('aether-round');
+  $('#round-input').value = validCode(saved || '') ? saved : newCode();
+  $('#round-input').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4); if (validCode(e.target.value)) store.set('aether-round', e.target.value); });
+  $('#new-round').addEventListener('click', () => { const v = newCode(); $('#round-input').value = v; store.set('aether-round', v); });
+})();
+route();
+</script>
+</body>
+</html>
