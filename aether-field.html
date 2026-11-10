@@ -72,11 +72,15 @@ button { font: inherit; color: inherit; }
 .home-links { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-top: 26px; font-family: var(--font-ui); font-weight: 600; font-size: 18px; }
 
 /* ---------- Field ---------- */
-.cam-stage { position: fixed; inset: 0; background: #031017; overflow: hidden; }
+.cam-stage { position: fixed; inset: 0; background: #031017; overflow: hidden; touch-action: none; }
 .cam-stage video, .cam-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 #reticle { position: absolute; left: 50%; top: 46%; width: min(64vw, 300px); height: min(64vw, 300px); transform: translate(-50%, -50%); color: #E9FBFF; opacity: .8; pointer-events: none; }
 #reticle .ring { transform-origin: 0 0; animation: spin 14s linear infinite; }
 #reticle.locked { color: var(--glow); opacity: 1; }
+body.holo #reticle { display: none; }
+body.holo .sheet { max-height: 62%; }
+body.preview .cam-stage { background: radial-gradient(120% 70% at 50% 62%, #0d3240 0%, #04131a 60%, #020a0f 100%); }
+body.preview #cam, body.preview #overlay { visibility: hidden; }
 #reticle.locked .ring { animation-play-state: paused; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .field-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 20; display: flex; align-items: center; gap: 12px; padding: calc(env(safe-area-inset-top, 0px) + 8px) 14px 10px; background: var(--glass); color: var(--glass-ink); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
@@ -278,14 +282,15 @@ summary { cursor: pointer; font-family: var(--font-ui); font-weight: 600; color:
     <button class="btn ghost small manual-open" type="button">Shard number</button>
   </nav>
   <div id="ar-bar" class="ar-bar" hidden>
-    <p class="ar-help" id="ar-help">Match the glowing markers to the Pathfinder’s, then call moves.</p>
-    <div class="row">
+    <p class="ar-help" id="ar-help">Drag sideways to turn it, drag up to tilt it toward you, pinch to zoom. Double-tap resets.</p>
+    <div class="row" id="maze-row">
       <span class="seg-label" aria-hidden="true">Maze</span>
       <div class="seg" id="maze-seg-ar" role="group" aria-label="Maze"></div>
     </div>
     <div class="row">
-      <button class="btn small grow" type="button" id="flat-open">Flat view</button>
-      <button class="btn small primary grow" type="button" id="descent-done">Done</button>
+      <button class="btn small primary grow" type="button" id="holo-card">Rule card</button>
+      <button class="btn small grow" type="button" id="holo-reset">Reset view</button>
+      <button class="btn small grow" type="button" id="holo-done">Done</button>
     </div>
   </div>
   <article id="sheet" class="sheet" hidden aria-labelledby="sheet-title">
@@ -544,6 +549,21 @@ function poseFromHomography(H, f, cx, cy) {
   const r3 = [r1[1] * r2[2] - r1[2] * r2[1], r1[2] * r2[0] - r1[0] * r2[2], r1[0] * r2[1] - r1[1] * r2[0]];
   return { r1, r2, r3, t: scale(m3, lam) };
 }
+// Estimate focal length (pixels) from a square marker's homography; principal point assumed at image centre.
+function estimateFocal(H, cx, cy) {
+  if (!H) return null;
+  const col = j => [H[j] - cx * H[6 + j], H[3 + j] - cy * H[6 + j], H[6 + j]];
+  const [a1, b1, c1] = col(0), [a2, b2, c2] = col(1);
+  const A1 = c1 * c2, B1 = -(a1 * a2 + b1 * b2);
+  const A2 = c1 * c1 - c2 * c2, B2 = (a2 * a2 + b2 * b2) - (a1 * a1 + b1 * b1);
+  const den = A1 * A1 + A2 * A2;
+  if (!(den > 0)) return null;
+  const f2 = (A1 * B1 + A2 * B2) / den;
+  if (!(f2 > 0)) return null;
+  const f = Math.sqrt(f2);
+  const tilt = Math.hypot(c1, c2) * f / Math.hypot(a1, b1);
+  return tilt > 0.3 ? f : null;
+}
 /*LOGIC-END*/
 
 // ---------- Drawings ----------
@@ -634,7 +654,7 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
 };
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const state = { role: null, code: null, round: null, opened: [], active: null, strikes: 0, solved: new Set(), glyphStep: 0, camOn: false, mazeKey: 'A', lastMsg: {} };
+const state = { role: null, code: null, round: null, opened: [], active: null, view: null, strikes: 0, solved: new Set(), glyphStep: 0, tuner: 500, camOn: false, mazeKey: 'A', lastMsg: {} };
 const validCode = v => /^\d{4}$/.test(v);
 const newCode = () => String(1000 + Math.floor(Math.random() * 9000));
 function currentCode() {
@@ -665,8 +685,9 @@ window.addEventListener('hashchange', route);
 function enterField(role) {
   const code = currentCode();
   if (state.role !== role || state.code !== code) {
-    Object.assign(state, { role, code, round: makeRound(code), opened: [], active: null, strikes: 0, solved: new Set(), glyphStep: 0, mazeKey: 'A' });
+    Object.assign(state, { role, code, round: makeRound(code), opened: [], active: null, view: null, strikes: 0, solved: new Set(), glyphStep: 0, tuner: 500, mazeKey: 'A' });
   }
+  state.active = null; state.view = null; document.body.classList.remove('holo'); AR.stopPreview();
   $('#role-name').textContent = ROLES[role].name;
   $('#round-label').textContent = 'Round ' + String(code).padStart(4, '0');
   renderStrikes(); renderChips();
@@ -677,6 +698,7 @@ function enterField(role) {
   show('field');
 }
 function leaveField() {
+  document.body.classList.remove('holo'); AR.stopPreview(); state.view = null;
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
   state.camOn = false; state.active = null;
   const v = $('#cam'); if (v) v.srcObject = null;
@@ -726,23 +748,41 @@ function onShard(n, manual = false) {
 
 function openNode(id) {
   state.active = id;
-  $('#sheet').hidden = true; $('#ar-bar').hidden = true; $('#flat').hidden = true;
-  if (id === 'descent') { openDescent(); return; }
+  $('#sheet').hidden = true; $('#flat').hidden = true;
+  AR.init();
+  if (AR.ok) openHolo(id);
+  else { state.view = 'card'; $('#tray').hidden = true; openCard(id); }
+}
+function openHolo(id) {
+  state.view = 'holo'; document.body.classList.add('holo');
+  $('#tray').hidden = true; $('#start-cam').hidden = true; $('#ar-bar').hidden = false;
+  $('#maze-row').hidden = id !== 'descent';
+  $('#holo-card').textContent = id === 'descent' ? 'Flat view' : 'Rule card';
+  if (id === 'descent') renderMazeSeg($('#maze-seg-ar'), true);
+  if (!state.camOn) AR.startPreview();
+  AR.setModel(id);
+}
+function openCard(id) {
+  if (id === 'descent') { setMaze(state.mazeKey); $('#flat').hidden = false; return; }
   $('#sheet-slot').textContent = `Shard ${state.round.nodeShard[id]}`;
   $('#sheet-title').textContent = NODE[id].name;
   $('#sheet-body').innerHTML = RENDER[id]();
   $('#sheet-body').scrollTop = 0;
   BIND[id] && BIND[id]();
   $('#sheet').hidden = false;
-  setStatus('');
+  if (state.view !== 'holo') setStatus('');
 }
 function closeNode() {
-  state.active = null; seenAt = performance.now();
+  state.active = null; state.view = null; seenAt = performance.now();
+  document.body.classList.remove('holo'); AR.stopPreview();
   $('#sheet').hidden = true; $('#ar-bar').hidden = true; $('#flat').hidden = true; $('#tray').hidden = false;
+  $('#start-cam').hidden = state.camOn;
   AR.clear();
   setStatus(state.camOn ? idleStatus() : '');
 }
-$('#sheet-close').addEventListener('click', closeNode);
+$('#sheet-close').addEventListener('click', () => { if (state.view === 'holo') $('#sheet').hidden = true; else closeNode(); });
+$('#holo-card').addEventListener('click', () => openCard(state.active));
+$('#holo-done').addEventListener('click', closeNode);
 
 // ---------- Node cards ----------
 const RENDER = {
@@ -773,8 +813,8 @@ const RENDER = {
       </tbody></table></div>
       <p class="muted" style="margin-top:8px">Zero counts as even. Frequencies are in kilohertz.</p>
       <div class="tuner">
-        <div class="readout"><output id="freq-out">500</output><span>kilohertz</span></div>
-        <input type="range" id="freq" min="400" max="600" step="1" value="500" aria-label="Frequency in kilohertz" ${solved ? 'disabled' : ''}>
+        <div class="readout"><output id="freq-out">${state.tuner}</output><span>kilohertz</span></div>
+        <input type="range" id="freq" min="400" max="600" step="1" value="${state.tuner}" aria-label="Frequency in kilohertz" ${solved ? 'disabled' : ''}>
         <div class="nudge">${[-10, -1, 1, 10].map(d => `<button class="btn small" type="button" data-d="${d}" ${solved ? 'disabled' : ''}>${d > 0 ? '+' : '−'}${Math.abs(d)}</button>`).join('')}</div>
         <button class="btn primary wide" type="button" id="transmit" ${solved ? 'disabled' : ''}>Transmit</button>
       </div>`;
@@ -822,12 +862,12 @@ const RENDER = {
 const BIND = {
   resonator() {
     const range = $('#freq'), out = $('#freq-out');
-    const set = v => { v = Math.max(400, Math.min(600, v)); range.value = v; out.textContent = v; };
+    const set = v => { v = Math.max(400, Math.min(600, v)); range.value = v; out.textContent = v; state.tuner = v; };
     range.addEventListener('input', () => set(+range.value));
     $$('.nudge .btn').forEach(b => b.addEventListener('click', () => set(+range.value + Number(b.dataset.d))));
     $('#transmit').addEventListener('click', () => {
       const v = +range.value;
-      if (v === state.round.resonator.freq) { markSolved('resonator', `Resonance locked at ${v} kilohertz`); openNode('resonator'); }
+      if (v === state.round.resonator.freq) { markSolved('resonator', `Resonance locked at ${v} kilohertz`); openCard('resonator'); }
       else addStrike(`${v} kilohertz is the wrong frequency`);
     });
   },
@@ -838,7 +878,7 @@ const BIND = {
       if (key.dataset.glyph === want) {
         state.glyphStep++; key.classList.add('lit'); key.dataset.n = state.glyphStep;
         $('#glyph-progress').textContent = `${state.glyphStep} of 4 entered`;
-        if (state.glyphStep === 4) { markSolved('glyph', 'The Glyph Lock is open'); openNode('glyph'); }
+        if (state.glyphStep === 4) { markSolved('glyph', 'The Glyph Lock is open'); openCard('glyph'); }
       } else {
         key.classList.remove('miss'); void key.offsetWidth; key.classList.add('miss');
         addStrike(`${key.dataset.glyph} is out of order or not on the lock`);
@@ -852,24 +892,13 @@ function renderMazeSeg(el, short) {
   el.innerHTML = Object.keys(MAZES).map(k => `<button class="btn small" type="button" data-maze="${k}" aria-label="Maze ${k}" aria-pressed="${k === state.mazeKey}">${short ? k : 'Maze ' + k}</button>`).join('');
 }
 function setMaze(k) {
-  state.mazeKey = k;
+  const changed = k !== state.mazeKey; state.mazeKey = k;
   renderMazeSeg($('#maze-seg-ar'), true); renderMazeSeg($('#maze-seg-flat'), false);
   $('#flat-maze').innerHTML = mazeSvg(k);
-  AR.setMaze(k);
+  if (changed && state.active === 'descent' && state.view === 'holo') AR.setModel('descent');
 }
 ['#maze-seg-ar', '#maze-seg-flat'].forEach(sel => $(sel).addEventListener('click', e => { const b = e.target.closest('[data-maze]'); if (b) setMaze(b.dataset.maze); }));
-function openDescent() {
-  setMaze(state.mazeKey);
-  if (state.camOn && AR.ok) {
-    $('#tray').hidden = true; $('#ar-bar').hidden = false;
-    setStatus(`Hold shard ${state.round.nodeShard.descent} in view`);
-  } else {
-    $('#flat').hidden = false;
-  }
-}
-$('#flat-open').addEventListener('click', () => { $('#flat').hidden = false; });
-$('#flat-close').addEventListener('click', () => { $('#flat').hidden = true; if (!(state.camOn && AR.ok)) closeNode(); });
-$('#descent-done').addEventListener('click', closeNode);
+$('#flat-close').addEventListener('click', () => { if (state.view === 'holo') $('#flat').hidden = true; else closeNode(); });
 
 // ---------- Camera and scanning ----------
 let stream = null, W = 0, H = 0, sc = 1, lastDetect = 0, lockUntil = 0, seenShard = 0, seenAt = -1e9;
@@ -888,7 +917,8 @@ async function startCamera() {
     sizeStage();
     state.camOn = true; $('#start-cam').hidden = true;
     if (!state.active) setStatus(idleStatus());
-    if (state.active === 'descent') openDescent();
+    AR.stopPreview(); sizeStage();
+    if (state.active && state.view === 'holo') openHolo(state.active);
   } catch (err) {
     let why = {
       NotAllowedError: 'Camera access is blocked. Allow it for this page in your browser settings, or enter shard numbers by hand.',
@@ -932,10 +962,11 @@ function detect(now) {
   const corners = [L.topLeftCorner, L.topRightCorner, L.bottomRightCorner, L.bottomLeftCorner].map(p => ({ x: p.x / sc, y: p.y / sc }));
   lockUntil = now + 400; $('#reticle').classList.add('locked');
   const n = Number(m[1]);
-  if (state.active === 'descent') {
+  if (state.active && state.view === 'holo') {
     seenShard = n; seenAt = now;
-    if (n === state.round.nodeShard.descent) { AR.track(corners, now); drawQuad(null); }
-    else { drawQuad(corners); toast(`That’s shard ${n}. The Descent is on shard ${state.round.nodeShard.descent}.`, '', 'other' + n); }
+    const want = state.round.nodeShard[state.active];
+    if (n === want) { AR.track(corners, now); drawQuad(null); }
+    else { drawQuad(corners); toast(`That’s shard ${n}. ${NODE[state.active].name} is on shard ${want}.`, '', 'other' + n); }
     return;
   }
   drawQuad(corners);
@@ -945,127 +976,487 @@ function detect(now) {
 }
 function tick(now) {
   requestAnimationFrame(tick);
-  if (!state.camOn || document.body.dataset.view !== 'field') return;
-  const scanning = state.active === null || state.active === 'descent';
-  if (scanning && $('#flat').hidden && now - lastDetect > 45) { lastDetect = now; detect(now); }
-  if (state.active === 'descent' && $('#flat').hidden) {
+  if (document.body.dataset.view !== 'field') return;
+  const holo = state.active && state.view === 'holo';
+  if (state.camOn && (state.active === null || holo) && $('#flat').hidden && now - lastDetect > 45) { lastDetect = now; detect(now); }
+  if (holo && (state.camOn || AR.previewing) && $('#flat').hidden) {
     const seen = AR.render(now);
-    setStatus(seen ? `Tracking shard ${state.round.nodeShard.descent}: Maze ${state.mazeKey}` : `Hold shard ${state.round.nodeShard.descent} in view`);
+    const n = state.round.nodeShard[state.active];
+    const name = NODE[state.active].name + (state.active === 'descent' ? `, Maze ${state.mazeKey}` : '');
+    setStatus(AR.previewing ? `3D preview: ${name}` : seen ? `Tracking shard ${n}: ${name}` : `Hold shard ${n} in view`);
   }
 }
 requestAnimationFrame(tick);
 
 // ---------- Hologram ----------
+const HOLO = { R: 0.95, lift: 0.32, wallH: 0.13, wallT: 0.042 };
+const view3d = { spin: 0, tilt: 0, zoom: 1 };
 const AR = {
-  ok: false, renderer: null, scene: null, camera: null, anchor: null, holo: null, maze: null, mats: [], sm: null, lastSeen: -1e9, f: 1, W: 0, H: 0,
+  ok: false, renderer: null, scene: null, camera: null, anchor: null, holo: null, yawG: null, tiltG: null, spinG: null,
+  model: null, modelId: null, emitMats: [], sm: null, lastSeen: -1e9, shownAt: -1e9, f: 1, W: 0, H: 0, previewing: false,
+  cur: { spin: 0, tilt: 0, zoom: 1, yaw: 0 }, cone: null, coneKey: '', coneTop: 1, coneH: 0.3, particles: null, pData: [], ticks: null, stripes: null, fSamples: [],
   init() {
     if (this.renderer || typeof THREE === 'undefined') return;
     try {
-      this.renderer = new THREE.WebGLRenderer({ canvas: $('#ar'), alpha: true, antialias: true, preserveDrawingBuffer: false });
+      this.renderer = new THREE.WebGLRenderer({ canvas: $('#ar'), alpha: true, antialias: true });
       this.renderer.setPixelRatio(1); this.renderer.setClearColor(0x000000, 0);
       this.scene = new THREE.Scene();
       this.camera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
-      this.anchor = new THREE.Group(); this.anchor.matrixAutoUpdate = false; this.anchor.visible = false;
+      this.anchor = new THREE.Group(); this.anchor.matrixAutoUpdate = false; this.anchor.visible = false; this.scene.add(this.anchor);
       this.holo = new THREE.Group(); this.holo.rotation.x = -Math.PI / 2; this.anchor.add(this.holo);
-      this.scene.add(this.anchor);
-      const line = new THREE.LineBasicMaterial({ color: 0x5ff2ff, transparent: true, opacity: 0.9 });
-      const sq = [[-.5, -.5], [.5, -.5], [.5, .5], [-.5, .5]].map(([x, z]) => new THREE.Vector3(x, 0.002, z));
-      this.holo.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(sq), line));
+      this.yawG = new THREE.Group(); this.tiltG = new THREE.Group(); this.spinG = new THREE.Group();
+      this.holo.add(this.yawG); this.yawG.add(this.tiltG); this.tiltG.add(this.spinG);
+      this.stripes = stripeTexture();
+      this.buildEmitter();
       this.ok = true;
     } catch (e) { this.ok = false; this.renderer = null; }
   },
+  buildEmitter() {
+    const add = o => { this.holo.add(o); return o; };
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x5ff2ff, transparent: true, opacity: 0.9 }); lineMat.userData.base = 0.9;
+    const sq = [[-.5, -.5], [.5, -.5], [.5, .5], [-.5, .5]].map(([x, z]) => new THREE.Vector3(x, 0.003, z));
+    add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(sq), lineMat));
+    const glow = new THREE.MeshBasicMaterial({ color: 0x52eeff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }); glow.userData.base = 0.85;
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.38, 0.45, 64), glow); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.004; add(ring);
+    const tickMat = glow.clone(); tickMat.opacity = 0.5; tickMat.userData.base = 0.5;
+    this.ticks = new THREE.Group();
+    for (let i = 0; i < 12; i++) {
+      const a = i * Math.PI / 6; const L = i % 3 === 0 ? 0.1 : 0.05;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.004, L), tickMat);
+      m.position.set((0.52 + L / 2) * Math.sin(a), 0.004, -(0.52 + L / 2) * Math.cos(a)); m.rotation.y = Math.PI - a; this.ticks.add(m);
+    }
+    add(this.ticks);
+    const grad = document.createElement('canvas'); grad.width = 4; grad.height = 128;
+    const g = grad.getContext('2d'); const lg = g.createLinearGradient(0, 0, 0, 128);
+    lg.addColorStop(0, 'rgba(255,255,255,0)'); lg.addColorStop(1, 'rgba(255,255,255,1)'); g.fillStyle = lg; g.fillRect(0, 0, 4, 128);
+    const coneMat = new THREE.MeshBasicMaterial({ color: 0x2fe3f5, map: new THREE.CanvasTexture(grad), transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    coneMat.userData.base = 0.22;
+    this.cone = add(new THREE.Mesh(new THREE.BufferGeometry(), coneMat));
+    const N = 60;
+    this.pData = Array.from({ length: N }, () => ({ a: Math.random() * Math.PI * 2, f: Math.sqrt(Math.random()), ph: Math.random(), sp: 0.12 + Math.random() * 0.18 }));
+    const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 3), 3));
+    const pMat = new THREE.PointsMaterial({ color: 0xaefcff, size: 0.028, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }); pMat.userData.base = 0.85;
+    this.particles = add(new THREE.Points(pg, pMat));
+    this.emitMats = [lineMat, glow, tickMat, coneMat, pMat];
+  },
   resize(w, h) {
     this.init(); if (!this.ok) return;
-    this.W = w; this.H = h; this.f = 0.78 * Math.max(w, h);
+    this.W = w; this.H = h; this.fSamples = [];
+    const saved = Number(store.get(`aether-focal-${w}x${h}`));
     this.renderer.setSize(w, h, false);
-    this.camera.aspect = w / h; this.camera.fov = 2 * Math.atan(h / (2 * this.f)) * 180 / Math.PI; this.camera.updateProjectionMatrix();
+    this.camera.aspect = w / h;
+    this.setFocal(saved > 0 ? saved : 0.78 * Math.max(w, h));
   },
-  setMaze(key) {
+  setFocal(f) {
+    this.f = f; this.camera.fov = 2 * Math.atan(this.H / (2 * f)) * 180 / Math.PI; this.camera.updateProjectionMatrix();
+  },
+  learnFocal(Hm) {
+    const fe = estimateFocal(Hm, this.W / 2, this.H / 2); const big = Math.max(this.W, this.H);
+    if (!fe || fe < 0.4 * big || fe > 2.2 * big) return;
+    this.fSamples.push(fe); if (this.fSamples.length > 45) this.fSamples.shift();
+    if (this.fSamples.length < 6) return;
+    const sorted = this.fSamples.slice().sort((a, b) => a - b); const med = sorted[sorted.length >> 1];
+    if (Math.abs(med - this.f) / this.f > 0.004) this.setFocal(med);
+    if (this.fSamples.length % 15 === 0) store.set(`aether-focal-${this.W}x${this.H}`, med.toFixed(1));
+  },
+  setModel(id) {
     this.init(); if (!this.ok) return;
-    if (this.maze) { this.holo.remove(this.maze); disposeTree(this.maze); }
-    const built = buildMaze3D(key); this.maze = built.group; this.mats = built.mats; this.holo.add(this.maze);
+    if (this.model) { this.spinG.remove(this.model.group); disposeTree(this.model.group); }
+    this.model = MODEL_BUILDERS[id](); this.modelId = id;
+    this.spinG.add(this.model.group); this.shownAt = performance.now();
   },
-  track(corners, now) {
-    if (!this.ok) return;
-    if (!this.sm || now - this.lastSeen > 300) this.sm = corners.map(p => ({ ...p }));
-    else this.sm = this.sm.map((p, i) => ({ x: p.x + (corners[i].x - p.x) * 0.55, y: p.y + (corners[i].y - p.y) * 0.55 }));
-    const pose = poseFromHomography(solveHomography(MARKER_SRC, this.sm), this.f, this.W / 2, this.H / 2);
-    if (!pose) return;
-    const { r1, r2, r3, t } = pose;
+  startPreview() {
+    this.init(); if (!this.ok) return;
+    this.previewing = true; document.body.classList.add('preview');
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    this.resize(Math.round(window.innerWidth * dpr), Math.round(window.innerHeight * dpr));
+    this.setFocal(1.2 * Math.max(this.W, this.H));
+    this.shownAt = performance.now();
+  },
+  stopPreview() { this.previewing = false; document.body.classList.remove('preview'); },
+  setPose({ r1, r2, r3, t }) {
     this.anchor.matrix.set(
       r1[0], r2[0], r3[0], t[0],
       -r1[1], -r2[1], -r3[1], -t[1],
       -r1[2], -r2[2], -r3[2], -t[2],
       0, 0, 0, 1);
     this.anchor.matrixWorldNeedsUpdate = true;
+  },
+  track(corners, now) {
+    if (!this.ok || this.previewing) return;
+    if (!this.sm || now - this.lastSeen > 300) this.sm = corners.map(p => ({ ...p }));
+    else this.sm = this.sm.map((p, i) => ({ x: p.x + (corners[i].x - p.x) * 0.55, y: p.y + (corners[i].y - p.y) * 0.55 }));
+    this.learnFocal(solveHomography(MARKER_SRC, corners));
+    const pose = poseFromHomography(solveHomography(MARKER_SRC, this.sm), this.f, this.W / 2, this.H / 2);
+    if (!pose) return;
+    this.setPose(pose);
+    if (now - this.lastSeen > 1200) this.shownAt = now;
     this.lastSeen = now;
+  },
+  updateCone(topR, h) {
+    const key = topR.toFixed(2) + '|' + h.toFixed(2);
+    if (key === this.coneKey) return;
+    this.coneKey = key; this.cone.geometry.dispose();
+    this.cone.geometry = new THREE.CylinderGeometry(topR, 0.44, h, 48, 1, true);
+    this.cone.position.y = h / 2; this.coneTop = topR; this.coneH = h;
+  },
+  updateParticles(now) {
+    const pos = this.particles.geometry.attributes.position;
+    this.pData.forEach((p, i) => {
+      const u = ((now / 1000) * p.sp + p.ph) % 1;
+      const r = (0.44 + (this.coneTop - 0.44) * u) * p.f; const a = p.a + u * 0.6;
+      pos.setXYZ(i, r * Math.sin(a), u * this.coneH, -r * Math.cos(a));
+    });
+    pos.needsUpdate = true;
   },
   render(now) {
     if (!this.ok) return false;
+    if (this.previewing) {
+      const a = -0.95;
+      this.setPose({ r1: [1, 0, 0], r2: [0, Math.cos(a), Math.sin(a)], r3: [0, -Math.sin(a), Math.cos(a)], t: [0, 0.5, 5.4] });
+      this.lastSeen = now;
+    }
     const seen = now - this.lastSeen < 1200;
     this.anchor.visible = seen;
-    if (!reduceMotion) { const k = 0.78 + 0.14 * Math.sin(now / 520); this.mats.forEach(m => { m.opacity = m.userData.base * k; }); }
+    if (seen && this.model) {
+      const c = this.cur, k = 0.25, M = this.model;
+      c.spin += (view3d.spin - c.spin) * k; c.tilt += (view3d.tilt - c.tilt) * k; c.zoom += (view3d.zoom - c.zoom) * k;
+      this.scene.updateMatrixWorld(true);
+      const cam = this.holo.worldToLocal(new THREE.Vector3(0, 0, 0));
+      let d = Math.atan2(cam.x, cam.z) - c.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); c.yaw += d * 0.15;
+      const Rz = M.radius * c.zoom;
+      this.yawG.rotation.y = c.yaw;
+      this.yawG.position.y = HOLO.lift + Rz * Math.sin(c.tilt) * 0.95;
+      this.tiltG.rotation.x = c.tilt;
+      this.spinG.rotation.y = (M.faceCamera ? 0 : -c.yaw) + c.spin;
+      this.spinG.scale.setScalar(c.zoom);
+      this.updateCone(Rz * Math.cos(c.tilt) * 0.9, this.yawG.position.y);
+      const p = reduceMotion ? 1 : Math.min(1, (now - this.shownAt) / 750);
+      M.rise.scale.y = Math.max(0.001, 1 - Math.pow(1 - p, 3));
+      if (M.update) M.update(now);
+      const pulse = reduceMotion ? 1 : (0.9 + 0.1 * Math.sin(now / 520)) * (Math.random() < 0.004 ? 0.45 : 1);
+      const build = p < 1 ? 0.5 + 0.5 * Math.random() : 1;
+      M.mats.concat(this.emitMats).forEach(m => { m.opacity = m.userData.base * pulse * build; });
+      if (!reduceMotion) { this.stripes.offset.y = (now / 3000) % 1; this.ticks.rotation.y = now / 6000; this.updateParticles(now); }
+    }
     this.renderer.render(this.scene, this.camera);
     return seen;
   },
   clear() { if (this.ok) { this.anchor.visible = false; this.sm = null; this.renderer.clear(); } }
 };
+window.addEventListener('resize', () => { if (AR.previewing) AR.startPreview(); });
 function disposeTree(obj) {
-  obj.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } });
+  obj.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map && o.material.map !== AR.stripes) o.material.map.dispose(); o.material.dispose(); } });
 }
-function textSprite(text, px, color) {
+function stripeTexture() {
+  const c = document.createElement('canvas'); c.width = 4; c.height = 64;
+  const g = c.getContext('2d'); g.fillStyle = 'rgba(255,255,255,1)'; g.fillRect(0, 0, 4, 64);
+  g.fillStyle = 'rgba(255,255,255,0.35)'; for (let y = 0; y < 64; y += 8) g.fillRect(0, y, 4, 3);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1, 3); return t;
+}
+function textSprite(text, px, color, mats) {
   const c = document.createElement('canvas'); c.width = 256; c.height = 128;
   const g = c.getContext('2d');
   g.font = `700 ${px}px "Saira Semi Condensed", "Arial Narrow", sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.lineWidth = 10; g.strokeStyle = 'rgba(3,16,23,.75)'; g.strokeText(text, 128, 64);
+  g.lineWidth = 12; g.strokeStyle = 'rgba(3,16,23,.8)'; g.strokeText(text, 128, 64);
   g.fillStyle = color; g.fillText(text, 128, 64);
-  const tex = new THREE.CanvasTexture(c);
-  const m = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false });
-  m.userData.base = 1;
-  const s = new THREE.Sprite(m); s.scale.set(0.36, 0.18, 1); return s;
+  const m = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false, depthTest: false });
+  m.userData.base = 1; if (mats) mats.push(m);
+  return new THREE.Sprite(m);
 }
-function buildMaze3D(key) {
-  const mz = MAZES[key]; const k = 1.45 / 62; const y0 = 0.16, h = 0.13;
+// Draws one lexicon glyph onto a 2D canvas from the same shapes the phone UI uses.
+function drawGlyph(ctx, name, x, y, size, color) {
+  ctx.save(); ctx.translate(x, y); ctx.scale(size / 100, size / 100);
+  ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = color; ctx.fillStyle = color;
+  const re = /<(path|circle|rect)([^>]*)\/>/g; let m;
+  while ((m = re.exec(GLYPH_SVG[name]))) {
+    const attr = k => { const r = new RegExp('\\b' + k + '="([^"]*)"').exec(m[2]); return r ? r[1] : null; };
+    let p;
+    if (m[1] === 'path') p = new Path2D(attr('d'));
+    else if (m[1] === 'circle') { p = new Path2D(); p.arc(+attr('cx'), +attr('cy'), +attr('r'), 0, Math.PI * 2); }
+    else { p = new Path2D(); p.rect(+attr('x'), +attr('y'), +attr('width'), +attr('height')); }
+    if (attr('fill') === 'currentColor') ctx.fill(p);
+    if (attr('stroke') !== 'none') ctx.stroke(p);
+  }
+  ctx.restore();
+}
+
+// ---------- Relic models, one per node ----------
+function holoKit() {
+  const mats = [];
+  const mk = (Mat, opts) => { const m = new Mat(Object.assign({ transparent: true, depthWrite: false }, opts)); m.userData.base = opts.opacity; mats.push(m); return m; };
+  const ADD = THREE.AdditiveBlending, DS = THREE.DoubleSide;
+  const P = {
+    disc: mk(THREE.MeshBasicMaterial, { color: 0x041a24, opacity: 0.86, side: DS }),
+    rim: mk(THREE.MeshBasicMaterial, { color: 0x52eeff, opacity: 0.9, side: DS, blending: ADD }),
+    solid: mk(THREE.MeshBasicMaterial, { color: 0x8af7ff, opacity: 0.95, side: DS }),
+    glass: mk(THREE.MeshBasicMaterial, { color: 0x0d3a46, opacity: 0.72, side: DS }),
+    edge: mk(THREE.LineBasicMaterial, { color: 0xe6feff, opacity: 0.9, blending: ADD }),
+    accent: mk(THREE.MeshBasicMaterial, { color: 0xff5e9c, opacity: 1, side: DS })
+  };
+  const group = new THREE.Group(), rise = new THREE.Group(); group.add(rise);
+  const at = (m, x, y, z) => { m.position.set(x, y, z); return m; };
+  const flat = (geo, mat, y, order) => { const m = new THREE.Mesh(geo, mat); m.rotation.x = -Math.PI / 2; m.position.y = y; m.renderOrder = order; return m; };
+  const withEdges = (mesh, parent = rise) => {
+    if (!mesh.renderOrder) mesh.renderOrder = 4; parent.add(mesh);
+    const e = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, 20), P.edge);
+    e.position.copy(mesh.position); e.rotation.copy(mesh.rotation); e.scale.copy(mesh.scale); e.renderOrder = 5; parent.add(e);
+    return mesh;
+  };
+  const base = r => {
+    group.add(flat(new THREE.CircleGeometry(r, 96), P.disc, -0.004, 1));
+    group.add(flat(new THREE.RingGeometry(r - 0.012, r + 0.012, 96), P.rim, -0.002, 2));
+  };
+  const label = (text, px, color, x, y, z, w = 0.36) => {
+    const s = textSprite(text, px, color, mats); s.scale.set(w, w / 2, 1); s.position.set(x, y, z); s.renderOrder = 7; group.add(s); return s;
+  };
+  return { mats, mk, P, group, rise, at, flat, withEdges, base, label };
+}
+
+// The Conduits: a loom of strands in this round's colours, numbered left to right.
+function buildConduits() {
+  const K = holoKit(); const { P, at } = K; const strands = state.round.conduits.strands; const n = strands.length;
+  K.base(0.92);
+  const w = 1.3, H = 0.78, y0 = 0.16, x = i => -w / 2 + w * (i + 0.5) / n;
+  for (const y of [y0, y0 + H]) K.withEdges(at(new THREE.Mesh(new THREE.BoxGeometry(w + 0.26, 0.05, 0.09), P.solid), 0, y, 0));
+  for (const sx of [-1, 1]) {
+    K.withEdges(at(new THREE.Mesh(new THREE.BoxGeometry(0.05, H, 0.05), P.solid), sx * (w / 2 + 0.13), y0 + H / 2, 0));
+    K.withEdges(at(new THREE.Mesh(new THREE.OctahedronGeometry(0.065), P.accent), sx * (w / 2 + 0.13), y0 + H + 0.1, 0));
+  }
+  const beads = [];
+  strands.forEach((s, i) => {
+    const col = new THREE.Color(COLOUR_HEX[s.colour]);
+    const core = at(new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, H, 14), K.mk(THREE.MeshBasicMaterial, { color: col, opacity: 0.98 })), x(i), y0 + H / 2, 0);
+    core.renderOrder = 4; K.rise.add(core);
+    const halo = at(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, H, 18, 1, true), K.mk(THREE.MeshBasicMaterial, { color: col, opacity: 0.3, blending: THREE.AdditiveBlending, side: THREE.DoubleSide })), x(i), y0 + H / 2, 0);
+    halo.renderOrder = 3; K.rise.add(halo);
+    const bead = at(new THREE.Mesh(new THREE.SphereGeometry(0.034, 12, 10), K.mk(THREE.MeshBasicMaterial, { color: 0xffffff, opacity: 0.85, blending: THREE.AdditiveBlending })), x(i), y0, 0);
+    bead.renderOrder = 6; K.rise.add(bead); beads.push(bead);
+    K.label(String(i + 1), 76, '#e9fbff', x(i), y0 - 0.11, 0.1, 0.3);
+    K.label(s.colour, 54, COLOUR_HEX[s.colour], x(i), y0 + H + 0.1 + (i % 2) * 0.11, 0, 0.38);
+  });
+  return Object.assign(K, { radius: 0.92, faceCamera: true, update(now) { beads.forEach((b, i) => { b.position.y = y0 + H * (((now / 1700) + i * 0.17) % 1); }); } });
+}
+
+// The Resonator: a crystal inside orbiting rings; its waveform follows the phone's tuner.
+function buildResonator() {
+  const K = holoKit(); const { P, at } = K; const ADD = THREE.AdditiveBlending; const cy = 0.66;
+  K.base(0.9);
+  K.withEdges(at(new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.26, 0.12, 6), P.solid), 0, 0.06, 0));
+  K.withEdges(at(new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, cy - 0.36, 8), P.solid), 0, 0.12 + (cy - 0.36) / 2, 0));
+  const crystalMat = K.mk(THREE.MeshBasicMaterial, { color: 0x8af7ff, opacity: 0.55, side: THREE.DoubleSide });
+  const crystal = at(new THREE.Mesh(new THREE.OctahedronGeometry(0.2), crystalMat), 0, cy, 0); crystal.scale.set(1, 1.9, 1); crystal.renderOrder = 4; K.rise.add(crystal);
+  const cEdges = new THREE.LineSegments(new THREE.EdgesGeometry(crystal.geometry), P.edge); cEdges.scale.copy(crystal.scale); cEdges.position.copy(crystal.position); cEdges.renderOrder = 5; K.rise.add(cEdges);
+  const heart = at(new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 12), K.mk(THREE.MeshBasicMaterial, { color: 0xffffff, opacity: 0.95 })), 0, cy, 0); heart.renderOrder = 6; K.rise.add(heart);
+  const rings = [[0.4, 0x52eeff, 1.2, 0.2], [0.48, 0xff5e9c, 0.4, 1.0], [0.56, 0x52eeff, -0.7, 0.5]].map(([r, c, rx, rz]) => {
+    const holder = at(new THREE.Group(), 0, cy, 0); holder.rotation.set(rx, 0, rz); K.rise.add(holder);
+    const t = new THREE.Mesh(new THREE.TorusGeometry(r, 0.011, 8, 96), K.mk(THREE.MeshBasicMaterial, { color: c, opacity: 0.85, blending: ADD })); t.renderOrder = 5; holder.add(t);
+    const dot = at(new THREE.Mesh(new THREE.SphereGeometry(0.028, 10, 8), K.mk(THREE.MeshBasicMaterial, { color: 0xffffff, opacity: 0.95 })), r, 0, 0); dot.renderOrder = 6; t.add(dot);
+    return t;
+  });
+  const N = 180; const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 3), 3));
+  const wave = at(new THREE.LineLoop(wg, K.mk(THREE.LineBasicMaterial, { color: 0xbffcff, opacity: 0.95, blending: ADD })), 0, cy, 0); wave.renderOrder = 6; K.rise.add(wave);
+  return Object.assign(K, { radius: 0.9, faceCamera: false, update(now) {
+    const solved = state.solved.has('resonator'); const f = state.tuner;
+    const speed = solved ? 0.15 : 0.4 + (f - 400) / 200 * 2.2; const t = now / 1000;
+    rings.forEach((r, i) => { r.rotation.z = t * speed * (i % 2 ? -1 : 1) * (1 + i * 0.3); });
+    crystal.rotation.y = cEdges.rotation.y = t * speed * 0.5;
+    const lobes = 3 + Math.round((f - 400) / 25); const amp = solved ? 0 : 0.045; const pos = wg.attributes.position;
+    for (let i = 0; i < N; i++) { const a = i / N * Math.PI * 2; const r = 0.7 + amp * Math.sin(lobes * a + t * speed * 3); pos.setXYZ(i, r * Math.sin(a), 0, -r * Math.cos(a)); }
+    pos.needsUpdate = true;
+    crystalMat.color.setHex(solved ? 0x45d99a : 0x8af7ff);
+  } });
+}
+
+// The Glyph Lock: an upright tablet carved with the lexicon; entered glyphs glow green.
+function buildGlyphTablet() {
+  const K = holoKit(); const { P, at } = K; const y0 = 0.16, TH = 1.2;
+  K.base(0.9);
+  K.withEdges(at(new THREE.Mesh(new THREE.BoxGeometry(1.1, TH, 0.06), K.mk(THREE.MeshBasicMaterial, { color: 0x06222d, opacity: 0.92 })), 0, y0 + TH / 2, 0));
+  K.withEdges(at(new THREE.Mesh(new THREE.BoxGeometry(1.24, 0.06, 0.16), P.solid), 0, y0 - 0.03, 0));
+  for (const sx of [-1, 1]) {
+    K.withEdges(at(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, TH + 0.12, 10), P.solid), sx * 0.66, y0 + (TH + 0.12) / 2, 0));
+    K.withEdges(at(new THREE.Mesh(new THREE.OctahedronGeometry(0.06), P.accent), sx * 0.66, y0 + TH + 0.2, 0));
+  }
+  const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 560;
+  const tex = new THREE.CanvasTexture(canvas);
+  const face = at(new THREE.Mesh(new THREE.PlaneGeometry(1.04, 1.14), K.mk(THREE.MeshBasicMaterial, { map: tex, opacity: 1 })), 0, y0 + TH / 2, 0.032);
+  face.renderOrder = 6; K.rise.add(face);
+  let drawn = '';
+  const paint = () => {
+    const g = canvas.getContext('2d'); g.clearRect(0, 0, canvas.width, canvas.height);
+    const order = state.round.glyph.answer; const solved = state.solved.has('glyph');
+    const cw = canvas.width / 4, ch = canvas.height / 4;
+    GLYPH_GRID.forEach((row, r) => row.forEach((name, c) => {
+      const k = order.indexOf(name); const lit = solved ? k >= 0 : k >= 0 && k < state.glyphStep;
+      const color = lit ? '#45D99A' : '#8AF7FF'; const size = cw * 0.5;
+      const x = c * cw + (cw - size) / 2, y = r * ch + 14;
+      drawGlyph(g, name, x, y, size, color);
+      g.font = '600 21px "Saira Semi Condensed", "Arial Narrow", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+      g.fillStyle = lit ? '#45D99A' : '#CDEFF5'; g.fillText(name, c * cw + cw / 2, y + size + 28);
+      if (lit) { g.font = '700 26px "Saira Semi Condensed", "Arial Narrow", sans-serif'; g.fillText(String(k + 1), c * cw + cw - 16, y + 18); }
+    }));
+    tex.needsUpdate = true;
+  };
+  return Object.assign(K, { radius: 0.9, faceCamera: true, update() {
+    const key = state.glyphStep + (state.solved.has('glyph') ? 's' : '');
+    if (key !== drawn) { drawn = key; paint(); }
+  } });
+}
+
+// The Echo Chamber: four numbered pads under an orbit of the four rule shapes, with echoing rings.
+function buildEcho() {
+  const K = holoKit(); const { P, at } = K; const ADD = THREE.AdditiveBlending; const cy = 0.8;
+  K.base(0.92);
+  [-0.5, -0.17, 0.17, 0.5].forEach((x, i) => {
+    K.withEdges(at(new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.12, 24), P.glass), x, 0.06, 0));
+    const top = K.flat(new THREE.RingGeometry(0.07, 0.1, 32), P.rim, 0.125, 5); top.position.x = x; K.rise.add(top);
+    K.label(String(i + 1), 76, '#e9fbff', x, 0.03, 0.3, 0.3);
+  });
+  K.withEdges(at(new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, cy - 0.2, 8), P.solid), 0, 0.12 + (cy - 0.2) / 2 - 0.06, 0));
+  const orbit = at(new THREE.Group(), 0, cy, 0); K.rise.add(orbit);
+  const shape = pts => { const s = new THREE.Shape(); pts.forEach(([x, y], i) => (i ? s.lineTo(x, y) : s.moveTo(x, y))); s.closePath(); return s; };
+  const circle = new THREE.Shape(); circle.absarc(0, 0, 0.1, 0, Math.PI * 2, false);
+  const a = 0.032, b = 0.11;
+  [shape([[0, 0.12], [0.11, -0.08], [-0.11, -0.08]]), shape([[-0.09, -0.09], [0.09, -0.09], [0.09, 0.09], [-0.09, 0.09]]), circle,
+   shape([[-a, b], [a, b], [a, a], [b, a], [b, -a], [a, -a], [a, -b], [-a, -b], [-a, -a], [-b, -a], [-b, a], [-a, a]])].forEach((s, i) => {
+    const geo = new THREE.ExtrudeGeometry(s, { depth: 0.03, bevelEnabled: false, curveSegments: 24 }); geo.center();
+    const ang = i * Math.PI / 2; const m = at(new THREE.Mesh(geo, P.solid), 0.34 * Math.sin(ang), 0, 0.34 * Math.cos(ang)); m.renderOrder = 4; orbit.add(m);
+    const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo), P.edge); e.renderOrder = 5; m.add(e);
+  });
+  const core = at(new THREE.Mesh(new THREE.IcosahedronGeometry(0.09, 0), P.accent), 0, cy, 0); core.renderOrder = 6; K.rise.add(core);
+  const echoes = [0, 1, 2].map(() => {
+    const m = K.mk(THREE.MeshBasicMaterial, { color: 0x52eeff, opacity: 0.7, blending: ADD });
+    const t = at(new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.008, 6, 64), m), 0, cy, 0); t.rotation.x = Math.PI / 2; t.renderOrder = 5; K.rise.add(t); return t;
+  });
+  return Object.assign(K, { radius: 0.92, faceCamera: true, update(now) {
+    const t = now / 1000; orbit.rotation.y = t * 0.6;
+    orbit.children.forEach(m => { m.rotation.y = -orbit.rotation.y; });
+    core.rotation.set(t * 0.7, t, 0);
+    echoes.forEach((r, i) => { const u = (t / 1.8 + i / 3) % 1; const s = 0.6 + u * 2.4; r.scale.set(s, s, s); r.material.userData.base = 0.75 * (1 - u); });
+  } });
+}
+
+// The Pressure Vent: three labelled vent stacks venting steam. Purely decorative: no gauge levels shown.
+function buildVent() {
+  const K = holoKit(); const { P, at } = K; const ADD = THREE.AdditiveBlending; const HS = 0.62;
+  K.base(0.92);
+  const stacks = [];
+  [['Left', -0.46], ['Centre', 0], ['Right', 0.46]].forEach(([name, x], i) => {
+    K.withEdges(at(new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, HS, 24, 1, true), P.glass), x, HS / 2, 0));
+    const colMat = K.mk(THREE.MeshBasicMaterial, { color: 0x52eeff, opacity: 0.5, blending: ADD });
+    const col = at(new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, HS - 0.04, 16), colMat), x, HS / 2, 0); col.renderOrder = 3; K.rise.add(col);
+    const cap = K.flat(new THREE.RingGeometry(0.1, 0.15, 32), P.rim, HS, 5); cap.position.x = x; K.rise.add(cap);
+    const ring = at(new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.01, 8, 48), K.mk(THREE.MeshBasicMaterial, { color: 0xff5e9c, opacity: 0.8, blending: ADD })), x, HS / 2, 0);
+    ring.rotation.x = Math.PI / 2; ring.renderOrder = 5; K.rise.add(ring);
+    K.label(name, 58, '#e9fbff', x, 0.03, 0.3, 0.44);
+    const M = 18; const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(M * 3), 3));
+    const pts = new THREE.Points(sg, K.mk(THREE.PointsMaterial, { color: 0xd8fdff, size: 0.035, opacity: 0.7, blending: ADD })); pts.renderOrder = 6; K.rise.add(pts);
+    stacks.push({ x, colMat, ring, pts, seeds: Array.from({ length: M }, () => [Math.random(), Math.random() * 6.28, 0.3 + Math.random() * 0.5]) });
+  });
+  return Object.assign(K, { radius: 0.92, faceCamera: true, update(now) {
+    const t = now / 1000;
+    stacks.forEach((s, i) => {
+      s.colMat.userData.base = 0.4 + 0.2 * Math.sin(t * 2 + i * 2.1);
+      const k = 1 + 0.08 * Math.sin(t * 3.3 + i); s.ring.scale.set(k, k, k); s.ring.position.y = HS / 2 + 0.2 * Math.sin(t * 1.4 + i * 1.7);
+      const pos = s.pts.geometry.attributes.position;
+      s.seeds.forEach(([ph, a, sp], j) => { const u = (t * sp + ph) % 1; const r = 0.05 * (1 + u * 1.5); pos.setXYZ(j, s.x + Math.sin(a + u * 3) * r, HS + u * 0.5, Math.cos(a + u * 3) * r); });
+      pos.needsUpdate = true;
+    });
+  } });
+}
+
+const MODEL_BUILDERS = {
+  conduits: buildConduits, resonator: buildResonator, glyph: buildGlyphTablet,
+  descent: () => buildMaze3D(state.mazeKey, AR.stripes), echo: buildEcho, vent: buildVent
+};
+
+function buildMaze3D(key, stripes) {
+  const mz = MAZES[key]; const k = HOLO.R / 62; const h = HOLO.wallH, t = HOLO.wallT;
   const R = [62, 46, 30, 14].map(r => r * k);
-  const group = new THREE.Group(); const mats = [];
-  const mat = (color, opacity, additive = true) => {
-    const m = new THREE.MeshBasicMaterial({ color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending });
-    m.userData.base = opacity; mats.push(m); return m;
+  const group = new THREE.Group(), walls = new THREE.Group(); const mats = [];
+  const mk = (Mat, opts) => { const m = new Mat(Object.assign({ transparent: true, depthWrite: false }, opts)); m.userData.base = opts.opacity; mats.push(m); return m; };
+  const ADD = THREE.AdditiveBlending, DS = THREE.DoubleSide;
+  const discMat = mk(THREE.MeshBasicMaterial, { color: 0x041a24, opacity: 0.86, side: DS });
+  const laneMat = mk(THREE.MeshBasicMaterial, { color: 0x0f4d5c, opacity: 0.6, side: DS });
+  const rimMat = mk(THREE.MeshBasicMaterial, { color: 0x52eeff, opacity: 0.9, side: DS, blending: ADD });
+  const sideMat = mk(THREE.MeshBasicMaterial, { color: 0x2bd6ea, map: stripes, opacity: 0.75, side: DS, blending: ADD });
+  const capMat = mk(THREE.MeshBasicMaterial, { color: 0x8af7ff, opacity: 0.97, side: DS });
+  const edgeMat = mk(THREE.LineBasicMaterial, { color: 0xe6feff, opacity: 0.9, blending: ADD });
+  const markMat = mk(THREE.MeshBasicMaterial, { color: 0xff5e9c, opacity: 1, side: DS });
+  const beamMat = mk(THREE.MeshBasicMaterial, { color: 0xff5e9c, opacity: 0.5, blending: ADD });
+  const coreMat = mk(THREE.MeshBasicMaterial, { color: 0xbffcff, opacity: 1 });
+  const flat = (geo, mat, y, order) => { const m = new THREE.Mesh(geo, mat); m.rotation.x = -Math.PI / 2; m.position.y = y; m.renderOrder = order; return m; };
+  const rad = d => d * Math.PI / 180;
+  group.add(flat(new THREE.CircleGeometry(R[0] + 0.16, 96), discMat, -0.004, 1));
+  group.add(flat(new THREE.RingGeometry(R[0] + 0.15, R[0] + 0.175, 96), rimMat, -0.002, 2));
+  group.add(flat(new THREE.RingGeometry(R[1], R[0], 96), laneMat, 0, 2));
+  group.add(flat(new THREE.RingGeometry(R[3], R[2], 96), laneMat, 0, 2));
+  const addArc = (r, a1, a2) => {
+    const segs = Math.max(6, Math.round((a2 - a1) / 0.06));
+    const side = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, segs, 1, true, Math.PI - a2, a2 - a1), sideMat);
+    side.position.y = h / 2; side.renderOrder = 3; walls.add(side);
+    const capGeo = new THREE.RingGeometry(r - t / 2, r + t / 2, segs, 1, Math.PI / 2 - a2, a2 - a1);
+    walls.add(flat(capGeo, capMat, h, 4));
+    const e = new THREE.LineSegments(new THREE.EdgesGeometry(capGeo), edgeMat); e.rotation.x = -Math.PI / 2; e.position.y = h + 0.001; e.renderOrder = 5; walls.add(e);
   };
-  const wallMat = mat(0x52eeff, 0.9), laneMat = mat(0x0a6f7d, 0.35), markMat = mat(0xff5e9c, 1), coreMat = mat(0x9ffbff, 1);
-  const rad = deg => deg * Math.PI / 180;
-  const arcWall = (r, a1, a2) => {
-    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, Math.max(4, Math.round((a2 - a1) / 0.08)), 1, true, Math.PI - a2, a2 - a1), wallMat);
-    m.position.y = y0 + h / 2; group.add(m);
-  };
-  arcWall(R[0], 0, Math.PI * 2);
-  for (let b = 0; b < 3; b++) for (let s = 0; s < 12; s++) if (!mz.gaps[b].includes(s)) arcWall(R[b + 1], rad(s * 30 - 15), rad(s * 30 + 15));
+  addArc(R[0], 0, Math.PI * 2);
+  for (let b = 0; b < 3; b++) for (let s = 0; s < 12; s++) if (!mz.gaps[b].includes(s)) addArc(R[b + 1], rad(s * 30 - 15), rad(s * 30 + 15));
   for (let i = 0; i < 3; i++) for (const b of mz.walls[i]) {
     const a = rad(b * 30 + 15); const len = R[i] - R[i + 1]; const mid = (R[i] + R[i + 1]) / 2;
-    const m = new THREE.Mesh(new THREE.BoxGeometry(0.022, h, len), wallMat);
-    m.position.set(mid * Math.sin(a), y0 + h / 2, -mid * Math.cos(a)); m.rotation.y = Math.PI - a; group.add(m);
+    const geo = new THREE.BoxGeometry(t, h, len);
+    const m = new THREE.Mesh(geo, capMat); m.position.set(mid * Math.sin(a), h / 2, -mid * Math.cos(a)); m.rotation.y = Math.PI - a; m.renderOrder = 4; walls.add(m);
+    const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat); e.position.copy(m.position); e.rotation.copy(m.rotation); e.renderOrder = 5; walls.add(e);
   }
-  [[R[1], R[0]], [R[3], R[2]]].forEach(([ri, ro]) => {
-    const lane = new THREE.Mesh(new THREE.RingGeometry(ri, ro, 96), laneMat); lane.rotation.x = -Math.PI / 2; lane.position.y = y0; group.add(lane);
-  });
+  group.add(walls);
   const midR = [(R[0] + R[1]) / 2, (R[1] + R[2]) / 2, (R[2] + R[3]) / 2];
   mz.markers.forEach(([ring, s]) => {
-    const a = rad(s * 30); const t = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.016, 10, 40), markMat);
-    t.rotation.x = -Math.PI / 2; t.position.set(midR[ring] * Math.sin(a), y0 + 0.03, -midR[ring] * Math.cos(a)); group.add(t);
+    const a = rad(s * 30); const x = midR[ring] * Math.sin(a), z = -midR[ring] * Math.cos(a);
+    const tor = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.018, 10, 40), markMat); tor.rotation.x = -Math.PI / 2; tor.position.set(x, 0.03, z); tor.renderOrder = 6; group.add(tor);
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.32, 8, 1, true), beamMat); beam.position.set(x, 0.19, z); beam.renderOrder = 6; group.add(beam);
+    const top = new THREE.Mesh(new THREE.SphereGeometry(0.03, 12, 8), markMat); top.position.set(x, 0.36, z); top.renderOrder = 6; group.add(top);
   });
-  const core = new THREE.Mesh(new THREE.SphereGeometry(R[3] * 0.45, 20, 14), coreMat); core.position.y = y0 + 0.06; group.add(core);
+  const core = new THREE.Mesh(new THREE.SphereGeometry(R[3] * 0.42, 24, 16), coreMat); core.position.y = 0.07; core.renderOrder = 6; group.add(core);
   for (let s = 0; s < 12; s++) {
-    const a = rad(s * 30); const sp = textSprite(String(hourOf(s)), 64, '#e9fbff');
-    sp.scale.set(0.24, 0.12, 1); sp.position.set((R[0] + 0.15) * Math.sin(a), y0 + 0.05, -(R[0] + 0.15) * Math.cos(a)); group.add(sp);
+    const a = rad(s * 30); const sp = textSprite(String(hourOf(s)), 64, '#e9fbff', mats);
+    sp.scale.set(0.36, 0.18, 1); sp.position.set((R[0] + 0.3) * Math.sin(a), 0.06, -(R[0] + 0.3) * Math.cos(a)); sp.renderOrder = 7; group.add(sp);
   }
-  const title = textSprite('Maze ' + key, 70, '#9ffbff'); title.scale.set(0.5, 0.25, 1); title.position.set(0, y0 + 0.45, 0); group.add(title);
-  const beam = new THREE.LineBasicMaterial({ color: 0x52eeff, transparent: true, opacity: 0.45 }); beam.userData.base = 0.45; mats.push(beam);
-  [[-.5, -.5], [.5, -.5], [.5, .5], [-.5, .5]].forEach(([x, z]) => {
-    const a = Math.atan2(x, -z); const p = [new THREE.Vector3(x, 0, z), new THREE.Vector3(R[0] * Math.sin(a), y0, -R[0] * Math.cos(a))];
-    group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(p), beam));
-  });
-  return { group, mats };
+  return { group, mats, rise: walls, radius: HOLO.R + 0.17, faceCamera: false };
 }
+
+// ---------- Hologram touch controls ----------
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const pointers = new Map(); let gesture = null, lastTap = 0;
+const stage = $('.cam-stage');
+function resetView() { Object.assign(view3d, { spin: 0, tilt: 0, zoom: 1 }); }
+function beginGesture() {
+  const pts = [...pointers.values()];
+  if (pts.length === 1) gesture = { type: 'drag', x: pts[0].x, y: pts[0].y, spin: view3d.spin, tilt: view3d.tilt };
+  else if (pts.length >= 2) { const [a, b] = pts; gesture = { type: 'pinch', d: Math.hypot(a.x - b.x, a.y - b.y) || 1, ang: Math.atan2(b.y - a.y, b.x - a.x), zoom: view3d.zoom, spin: view3d.spin }; }
+  else gesture = null;
+}
+stage.addEventListener('pointerdown', e => {
+  if (state.active !== 'descent') return;
+  try { stage.setPointerCapture(e.pointerId); } catch (err) {}
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); beginGesture();
+  if (pointers.size === 1) { const now = performance.now(); if (now - lastTap < 300) resetView(); lastTap = now; }
+});
+stage.addEventListener('pointermove', e => {
+  if (!pointers.has(e.pointerId) || !gesture) return;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  const pts = [...pointers.values()];
+  if (gesture.type === 'drag' && pts.length === 1) {
+    view3d.spin = gesture.spin + (pts[0].x - gesture.x) * 0.008;
+    view3d.tilt = clamp(gesture.tilt - (pts[0].y - gesture.y) * 0.006, 0, 1.3);
+  } else if (gesture.type === 'pinch' && pts.length >= 2) {
+    const [a, b] = pts;
+    view3d.zoom = clamp(gesture.zoom * Math.hypot(a.x - b.x, a.y - b.y) / gesture.d, 0.5, 2.5);
+    view3d.spin = gesture.spin - (Math.atan2(b.y - a.y, b.x - a.x) - gesture.ang);
+  }
+});
+['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => stage.addEventListener(t, e => { if (pointers.delete(e.pointerId)) beginGesture(); }));
+stage.addEventListener('wheel', e => { if (state.active !== 'descent') return; e.preventDefault(); view3d.zoom = clamp(view3d.zoom * Math.exp(-e.deltaY * 0.0015), 0.5, 2.5); }, { passive: false });
+$('#holo-reset').addEventListener('click', resetView);
 
 // ---------- Manual entry ----------
 $('#shard-pick').innerHTML = [1, 2, 3, 4, 5, 6, 7, 8].map(n => `<button class="btn" type="button" data-n="${n}">${n}</button>`).join('');
@@ -1080,7 +1471,7 @@ $('#exit').addEventListener('click', () => { location.hash = 'home'; });
 // ---------- Shards sheet ----------
 function qrSvg(text) {
   if (typeof qrcode !== 'function') return '<p>QR library didn’t load. Reload the page.</p>';
-  const q = qrcode(0, 'M'); q.addData(text); q.make();
+  const q = qrcode(2, 'M'); q.addData(text); q.make();
   const n = q.getModuleCount(), m = 4; let d = '';
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c + m} ${r + m}h1v1h-1z`;
   return `<svg class="qr" viewBox="0 0 ${n + 2 * m} ${n + 2 * m}" shape-rendering="crispEdges" role="img" aria-label="Code for ${text}"><rect width="100%" height="100%" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
