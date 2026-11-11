@@ -531,6 +531,7 @@ function drawGlyph(ctx, name, x, y, size, color) {
     const validRound = v => /^\d{4}$/.test(v);
     const fmtClock = ms => { const t = Math.ceil(ms / 1000); return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; };
     const INTERACTIVE_NODES = ['conduits', 'echo'];
+    const PF_SCREENS = false;   // the wall of screens is off: the puzzle stage and its title strip carry everything
     const NODE_HINTS = {
       conduits: 'READ CAPS & FLICKER  //  CUT WHEN TOLD',
       resonator: 'WATCH THE PULSE  //  CALL SHORT & LONG',
@@ -598,6 +599,10 @@ function drawGlyph(ctx, name, x, y, size, color) {
       pushLog(`[RUN] released ${NODE[pf.engaged].name.toLowerCase()}`);
       pf.engaged = null;
       redrawCockpitZoneHeaders('PEDESTAL CAROUSEL & SCREEN BAYS ACTIVE', '#22c55e');
+    }
+    function pfToggleZoom() {
+      coreState.targetExplode = coreState.targetExplode > 0.5 ? 0.0 : 1.0;
+      pushLog(coreState.targetExplode > 0.5 ? '[VIEW] puzzle zoomed in' : '[VIEW] puzzle zoomed out');
     }
     function pfCount(node) { return node === 'conduits' ? pf.round.conduits.strands.length : 4; }
     function pfMoveCursor(d) {
@@ -720,6 +725,7 @@ function drawGlyph(ctx, name, x, y, size, color) {
 
     // ---- the Center Stage card for one node ----
     function pfDrawCard(sc) {
+      if (!PF_SCREENS) return;
       const cfg = cardConfigs.find(c => c.id === sc.orbId) || cardConfigs[0];
       const node = cfg.node, r = pf.round, now = performance.now();
       const solved = pfNodeSolved(node);
@@ -961,7 +967,15 @@ function drawGlyph(ctx, name, x, y, size, color) {
     function pfFrame(now) {
       const dt = Math.min(0.05, Math.max(0, (now - (pf.lastFrame || now)) / 1000)); pf.lastFrame = now;
       pfStageFrame(now, dt);
-      if (typeof backScreenCards !== 'undefined') backScreenCards.forEach(sc => pfDrawCard(sc));
+      pfMiniFrame(now, dt);
+      if (PF_SCREENS) backScreenCards.forEach(sc => pfDrawCard(sc));
+      else {
+        screenWallGroup.visible = false;
+        // the arch header only labels the calibration tutorial now
+        archHeaderMesh.visible = tutorialState.active || transitionState.phase !== 'NONE';
+      }
+      // the swipe rail is a calibration aid: it steps aside once the puzzles are up
+      swipeCorridorGroup.visible = tutorialState.active || transitionState.phase !== 'NONE';
       const clockEl = document.getElementById('pf-clock'), strikesEl = document.getElementById('pf-strikes');
       const st = Net.state;
       const clock = pfLinked() ? (st.phase === 'live' ? fmtClock(Net.remaining()) : st.phase.toUpperCase()) : '--:--';
@@ -1065,7 +1079,13 @@ function drawGlyph(ctx, name, x, y, size, color) {
       const tex = new THREE.CanvasTexture(c); tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false;
       const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
       s.scale.set(height * c.width / c.height, height, 1);
+      if (stMiniMode) s.visible = false;   // the small models on the ring carry no text
       return s;
+    }
+    let stMiniMode = false;
+    function stCircle(r, y, mat, n = 64) {
+      const pts = []; for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2; pts.push(new THREE.Vector3(r * Math.sin(a), y, r * Math.cos(a))); }
+      return new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), mat);
     }
     function stDispose(obj) {
       obj.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } });
@@ -1305,7 +1325,7 @@ function drawGlyph(ctx, name, x, y, size, color) {
         pfStage.group.position.set(POLAR_ORIGIN.x, POLAR_ORIGIN.y + 1.15, POLAR_ORIGIN.z);
         scene.add(pfStage.group);
       }
-      const ready = !tutorialState.active && transitionState.phase === 'NONE' && screenWallGroup.visible && pf.round;
+      const ready = !tutorialState.active && transitionState.phase === 'NONE' && hudCards[0].mesh.visible && pf.round;
       const center = ready ? backScreenCards.find(sc => sc.bayIdx === 2) : null;
       const cfg = center ? cardConfigs.find(c => c.id === center.orbId) : null;
       const node = cfg ? cfg.node : null;
@@ -1322,6 +1342,87 @@ function drawGlyph(ctx, name, x, y, size, color) {
       pfStage.zoom = THREE.MathUtils.lerp(pfStage.zoom, coreState.targetExplode > 0.5 ? 1.32 : 1.1, Math.min(1, dt * 6));
       pfStage.group.scale.set(pfStage.zoom, Math.max(0.02, e) * pfStage.zoom, pfStage.zoom);
       pfStage.obj.update(now, dt, { engaged: pf.engaged === node, solved: pfNodeSolved(node) });
+      pfHeaderFrame(node);
+    }
+
+    // ---- One slim title strip above the puzzle replaces the wall of screens ----
+    const pfHeader = { sprite: null, canvas: null, tex: null, sig: '' };
+    function pfHeaderFrame(node) {
+      if (!pfHeader.sprite) {
+        const c = document.createElement('canvas'); c.width = 1440; c.height = 372;
+        const tex = new THREE.CanvasTexture(c); tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false;
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false }));
+        sp.scale.set(7.2, 7.2 * 372 / 1440, 1); sp.position.set(0, 3.72, 0); sp.renderOrder = 20;
+        pfStage.group.add(sp);
+        Object.assign(pfHeader, { sprite: sp, canvas: c, tex });
+      }
+      const r = pf.round, soon = !!PF_SOON[node], solved = pfNodeSolved(node), engaged = pf.engaged === node, alarm = node === 'vent' && !!pfVent();
+      const line = pfRoomLine();
+      const sig = `${node}|${solved}|${engaged}|${alarm}|${line}|${pf.code}|${pf.gen}`;
+      if (sig === pfHeader.sig) return;
+      pfHeader.sig = sig;
+      const ctx = pfHeader.canvas.getContext('2d'), W = 1440, ink = '#0f172a', mute = '#64748b';
+      ctx.clearRect(0, 0, W, 372); ctx.textBaseline = 'alphabetic';
+      // row 1: node name and its state
+      ctx.fillStyle = ink; ctx.font = '200 92px "Inter", sans-serif'; ctx.textAlign = 'left'; ctx.fillText(pfNodeName(node), 24, 96);
+      const state = soon ? 'NOT INSTALLED' : engaged ? 'ENGAGED' : alarm ? 'ALARM' : solved ? 'OPEN' : (node === 'vent' ? 'DORMANT' : 'SEALED');
+      const stateCol = engaged ? '#16a34a' : alarm ? '#b45309' : solved ? '#16a34a' : mute;
+      ctx.font = '600 44px "JetBrains Mono", monospace'; ctx.textAlign = 'right'; ctx.fillStyle = stateCol; ctx.fillText(state, W - 24, 90);
+      ctx.strokeStyle = 'rgba(15,23,42,0.28)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(24, 128); ctx.lineTo(W - 24, 128); ctx.stroke();
+      // row 2: seal word, and the room's clock and strikes
+      ctx.font = '500 40px "JetBrains Mono", monospace'; ctx.textAlign = 'left';
+      ctx.fillStyle = mute; ctx.fillText('SEAL WORD', 24, 196);
+      ctx.fillStyle = ink; ctx.font = '600 40px "JetBrains Mono", monospace'; ctx.fillText(soon ? 'NONE' : r.nodeSeal[node].toUpperCase(), 280, 196);
+      ctx.textAlign = 'right'; ctx.fillStyle = ink; ctx.fillText(line.replace('  //  ', '   '), W - 24, 196);
+      // row 3: hull telemetry (read once at the start), or the controls while engaged
+      ctx.textAlign = 'left'; ctx.font = '500 40px "JetBrains Mono", monospace';
+      ctx.fillStyle = mute; ctx.fillText('CASE', 24, 268); ctx.fillStyle = ink; ctx.font = '600 40px "JetBrains Mono", monospace'; ctx.fillText(r.caseNumber.toUpperCase(), 150, 268);
+      ctx.fillStyle = mute; ctx.font = '500 40px "JetBrains Mono", monospace'; ctx.fillText('CELLS', 520, 268);
+      r.cellStates.forEach((on, i) => { const x = 676 + i * 40; if (on) { ctx.fillStyle = '#16a34a'; ctx.fillRect(x, 232, 24, 42); } else { ctx.strokeStyle = mute; ctx.lineWidth = 3; ctx.strokeRect(x + 1.5, 233.5, 21, 39); } });
+      ctx.fillStyle = mute; ctx.fillText('SIGIL', 866, 268);
+      pfDrawSigil(ctx, r.sigil, 1040, 254, 56, ink);
+      // row 4: what to do here, or the controls while engaged
+      ctx.font = '500 34px "JetBrains Mono", monospace'; ctx.textAlign = 'left';
+      if (engaged) { ctx.fillStyle = '#16a34a'; ctx.fillText('SWIPE TO CHOOSE  ·  [1] ACT  ·  [2] RELEASE', 24, 340); }
+      else {
+        ctx.fillStyle = mute; ctx.fillText(soon ? 'ARRIVES IN A LATER BUILD' : (NODE_HINTS[node] || ''), 24, 340);
+        if (INTERACTIVE_NODES.includes(node) && !solved) { ctx.textAlign = 'right'; ctx.fillText('[1] TO ENGAGE', W - 24, 340); }
+      }
+      pfHeader.tex.needsUpdate = true;
+    }
+
+    // ---- The ring carries a small live model of each puzzle instead of a numbered disc ----
+    const pfMini = { key: null, items: [] };
+    function pfMiniFrame(now, dt) {
+      const ready = !tutorialState.active && pf.round && hudCards.length && hudCards[0].mesh.visible;
+      const key = ready ? `${pf.code}|${pf.gen}` : null;
+      if (key !== pfMini.key) {
+        pfMini.items.forEach(it => { scene.remove(it.group); stDispose(it.group); });
+        pfMini.items = []; pfMini.key = key;
+        if (key) hudCards.forEach(card => {
+          card.mesh.children.forEach(ch => { ch.visible = false; });
+          const group = new THREE.Group();
+          const plinthMat = stMat(ST.paper);
+          const plinth = new THREE.Mesh(new THREE.CylinderGeometry(2.3, 2.45, 0.16, 48), plinthMat); plinth.position.y = -0.08; group.add(plinth);
+          const edgeMat = new THREE.LineBasicMaterial({ color: ST.mute });
+          group.add(stCircle(2.31, 0.012, edgeMat));
+          stMiniMode = true; const obj = PF_STAGE[card.node](); stMiniMode = false;
+          obj.group.traverse(o => { if (o.isSprite) o.visible = false; });
+          group.add(obj.group); group.scale.setScalar(0.001); scene.add(group);
+          pfMini.items.push({ card, group, obj, edgeMat, plinthMat, s: 0.001 });
+        });
+      }
+      pfMini.items.forEach(it => {
+        const c = it.card, front = c.visualState === 'VIEWING';
+        const t = Math.max(0, Math.min(1, (c.scale - 0.42) / 0.74));
+        it.s = THREE.MathUtils.lerp(it.s, 0.21 + 0.09 * t, Math.min(1, dt * 6));
+        it.group.position.set(c.mesh.position.x, c.mesh.position.y - 0.62, c.mesh.position.z);
+        it.group.scale.setScalar(it.s);
+        const solved = pfNodeSolved(c.node), alarm = c.node === 'vent' && !!pfVent();
+        it.edgeMat.color.setHex(alarm ? ST.amber : solved ? ST.ok : front ? ST.pick : (c.isHovered ? ST.ink : ST.mute));
+        it.plinthMat.color.setHex(alarm && Math.floor(now / 320) % 2 ? 0xfde68a : (solved ? 0xdcfce7 : ST.paper));
+        stMiniMode = true; it.obj.update(now, dt, { engaged: false, solved }); stMiniMode = false;
+      });
     }
 
     class SpatialHapticSynth {
@@ -1560,11 +1661,11 @@ function drawGlyph(ctx, name, x, y, size, color) {
     // Coaxial Polar Floor Grid
     const floorPolarGrid = new THREE.PolarGridHelper(
       POLAR_OUTER_R,
-      POLAR_SPOKES,
-      POLAR_RINGS,
+      8,
+      4,
       64,
-      0xcbd5e1,
-      0xe2e8f0
+      0xe2e8f0,
+      0xe8edf2
     );
     floorPolarGrid.position.copy(POLAR_ORIGIN);
     scene.add(floorPolarGrid);
@@ -1705,7 +1806,7 @@ function drawGlyph(ctx, name, x, y, size, color) {
     );
     const chamberWallWire = new THREE.LineSegments(
       new THREE.WireframeGeometry(chamberWallGeom),
-      new THREE.LineBasicMaterial({ color: 0xcbd5e1, transparent: true, opacity: 0.25 })
+      new THREE.LineBasicMaterial({ color: 0xcbd5e1, transparent: true, opacity: 0.05 })
     );
     chamberWallWire.position.y = 8.5;
     rotundaArchitectureGroup.add(chamberWallWire);
@@ -1725,7 +1826,7 @@ function drawGlyph(ctx, name, x, y, size, color) {
       if (halfChord > 0.5) {
         const louver = new THREE.Mesh(
           new THREE.PlaneGeometry(0.18, halfChord * 1.9),
-          new THREE.MeshBasicMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.22, side: THREE.DoubleSide })
+          new THREE.MeshBasicMaterial({ color: 0x94a3b8, transparent: true, opacity: 0.08, side: THREE.DoubleSide })
         );
         louver.position.set(xOff, 14.5, 0);
         louver.rotation.x = Math.PI * 0.38;
@@ -1770,8 +1871,8 @@ function drawGlyph(ctx, name, x, y, size, color) {
     }
 
     const deckInnerRing = buildHorizontalCircleLine(DECK_INNER_R, 72, 0x64748b, 0.55);
-    const deckMidRing   = buildHorizontalCircleLine(DECK_MID_R, 96, 0x64748b, 0.42);
-    const deckOuterRing = buildHorizontalCircleLine(DECK_OUTER_R, 112, 0x94a3b8, 0.35);
+    const deckMidRing   = buildHorizontalCircleLine(DECK_MID_R, 96, 0x64748b, 0.0);
+    const deckOuterRing = buildHorizontalCircleLine(DECK_OUTER_R, 112, 0x94a3b8, 0.18);
     controlDeckGroup.add(deckInnerRing.line, deckMidRing.line, deckOuterRing.line);
 
     // 2 Streamlined Curved Arc-Sector Chord Pads (Left Click [1] & Right Click [2])
@@ -2351,7 +2452,7 @@ function drawGlyph(ctx, name, x, y, size, color) {
           coreState.targetExplode = 0.0;
 
           pedestalOrbRingLine.visible = true;
-          screenWallGroup.visible = true;
+          screenWallGroup.visible = PF_SCREENS;
 
           // Spin the pedestal carousel in with a sweeping intro velocity
           carouselState.rotation = -Math.PI * 1.35;
@@ -4457,6 +4558,7 @@ function drawGlyph(ctx, name, x, y, size, color) {
         if (slot === 1) pfAct(); else if (slot === 2) pfDisengage();
         return;
       }
+      if (slot === 2 && !PF_SCREENS) { pfToggleZoom(); return; }
 
       if (slot === 1) {
         // ===================================================================
@@ -4576,8 +4678,6 @@ function drawGlyph(ctx, name, x, y, size, color) {
         mouseSim.simulatedTapSlot = slot;
         mouseSim.simulatedTapTimer = 0.28;
         triggerFingerChordAction(slot);
-      } else if (k === 'p') {
-        pinActiveScreenToNextOpenBay();
       }
     });
 
