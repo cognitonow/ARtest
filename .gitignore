@@ -1,2 +1,5 @@
 node_modules/
 .wrangler/
+tests/e2e/*.y4m
+tests/e2e/*.png
+__pycache__/
