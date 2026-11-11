@@ -266,7 +266,7 @@ const SIGILS = ['Spiral','Eye','Crown','Wave'];
 const NODES = [
   { id: 'conduits',  name: 'The Conduits',      slot: 1, owner: 'astro' },
   { id: 'resonator', name: 'The Resonator',     slot: 2, owner: 'astro' },
-  { id: 'glyph',     name: 'The Glyph Lock',    slot: 3, owner: 'xeno' },
+  { id: 'glyph',     name: 'The Jaw',           slot: 3, owner: 'xeno' },
   { id: 'descent',   name: 'The Descent',       slot: 4, owner: 'xeno' },
   { id: 'echo',      name: 'The Echo Chamber',  slot: 5, owner: 'xeno' },
   { id: 'vent',      name: 'The Pressure Vent', slot: 6, owner: 'astro' }
@@ -301,6 +301,13 @@ function mulberry32(a) {
 }
 function charge(colour, dot, flicker) { return (COLOURS[colour] + (dot ? 1 : 0)) * (flicker ? 2 : 1); }
 function resonatorFreq(pattern, last) { return PATTERNS[pattern][last % 2]; }
+// The Jaw's eight teeth: the round's four glyphs plus four decoys, shuffled. Same on every device.
+function jawTeethFor(code, glyphs) {
+  const rnd = mulberry32(((code * 53) + 11) >>> 0); const int = n => Math.floor(rnd() * n);
+  const mix = a => { for (let i = a.length - 1; i > 0; i--) { const j = int(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const decoys = mix(GLYPH_GRID.flat().filter(g => !glyphs.includes(g))).slice(0, 4);
+  return mix(glyphs.concat(decoys));
+}
 function glyphAnswer(glyphs, sigil) {
   const idx = {};
   READ_ORDERS[sigil].forEach(([r, c], i) => { idx[GLYPH_GRID[r][c]] = i; });
@@ -418,7 +425,7 @@ function makeRound(code) {
     code, caseNumber: codename + ' ' + digits, last, cells, cellStates, sigil, nodeShard, shardNode, nodeSeal, deadShards,
     conduits: { strands, targets },
     resonator: { pattern, freq: resonatorFreq(pattern, last) },
-    glyph: { glyphs, answer: glyphAnswer(glyphs, sigil) },
+    glyph: { glyphs, answer: glyphAnswer(glyphs, sigil), teeth: jawTeethFor(code, glyphs) },
     descent: genBallMaze(rnd),
     echo: { stages },
     vent: { gauges, answer: ventAnswer(gauges, last) }
@@ -1126,15 +1133,14 @@ function drawGlyph(ctx, name, x, y, size, color) {
       } };
     }
 
-    // ---- The Glyph Lock: the four glyphs on plates. Plates turn green as the Xenolinguist enters them. ----
+    // ---- The Jaw: the four glyphs on plates, above a jaw that mirrors the teeth the Xenolinguist presses. ----
     function stageGlyph() {
       const g = new THREE.Group(); const glyphs = pf.round.glyph.glyphs;
       const plates = glyphs.map((name, i) => {
         const c = document.createElement('canvas'); c.width = 256; c.height = 256;
         const tex = new THREE.CanvasTexture(c); tex.minFilter = THREE.LinearFilter; tex.generateMipmaps = false;
-        const m = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.0), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
-        const x = -1.74 + i * 1.16; m.position.set(x, 1.35 + (i % 2 ? 0.0 : 0.12), Math.abs(x) * -0.18); m.rotation.y = -x * 0.16; g.add(m);
-        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.8, 8), stMat(ST.mute)); post.position.set(x, 0.42, Math.abs(x) * -0.18); g.add(post);
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(0.82, 0.82), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
+        const x = -1.44 + i * 0.96; m.position.set(x, 2.0 + (i % 2 ? 0 : 0.1), Math.abs(x) * -0.2 - 0.3); m.rotation.y = -x * 0.16; g.add(m);
         return { name, c, tex, drawn: '' };
       });
       const paint = (p, i, order) => {
@@ -1147,10 +1153,37 @@ function drawGlyph(ctx, name, x, y, size, color) {
         if (lit) { ctx.fillStyle = '#16a34a'; ctx.textAlign = 'right'; ctx.fillText('#' + order, 238, 42); }
         p.tex.needsUpdate = true;
       };
+      // the jaw itself: blank teeth (which glyph sits on which tooth is the Xenolinguist's to see)
+      const jaw = new THREE.Group(); jaw.position.set(0, 0.06, 0.45); jaw.scale.setScalar(1.12); g.add(jaw);
+      const Rj = 1.5, CZ = -1.2, span = 32 * Math.PI / 180, N = pf.round.glyph.teeth.length, ang = i => -span + 2 * span * i / (N - 1);
+      const band = (ri, ro, a1, a2, h) => { const s = new THREE.Shape(); s.absarc(0, 0, ro, a1 - Math.PI / 2, a2 - Math.PI / 2, false); s.absarc(0, 0, ri, a2 - Math.PI / 2, a1 - Math.PI / 2, true); const geo = new THREE.ExtrudeGeometry(s, { depth: h, bevelEnabled: false, curveSegments: 24 }); geo.rotateX(-Math.PI / 2); return geo; };
+      const white = stMat(ST.paper);
+      stSolid(band(Rj - 0.2, Rj + 0.2, -span - 0.16, span + 0.16, 0.16), white, jaw, 0, 0.06, CZ);
+      stSolid(new THREE.BoxGeometry(1.5, 0.1, 0.78), white, jaw, 0, 0.11, -0.22);
+      const teeth = Array.from({ length: N }, (_, i) => {
+        const a = ang(i); const mat = stMat(ST.paper);
+        const m = stSolid(new THREE.BoxGeometry(0.19, 0.26, 0.17), mat, jaw, Rj * Math.sin(a), 0.4, CZ + Rj * Math.cos(a)); m.rotation.y = a;
+        return { m, mat, y: 0.4 };
+      });
+      const hinge = new THREE.Group(); hinge.position.set(0, 0.74, -0.58); jaw.add(hinge);
+      const upperMat = stMat(ST.paper);
+      stSolid(new THREE.BoxGeometry(1.5, 0.1, 0.8), upperMat, hinge, 0, 0, 0.4);
+      stSolid(band(Rj - 0.2, Rj + 0.2, -span - 0.16, span + 0.16, 0.14), upperMat, hinge, 0, -0.07, CZ + 0.58);
+      for (let i = 0; i < 7; i++) { const a = -span + 2 * span * (i + 0.5) / 7; const fang = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.16, 10), upperMat); fang.rotation.x = Math.PI; fang.position.set(Rj * Math.sin(a), -0.15, CZ + 0.58 + Rj * Math.cos(a)); hinge.add(fang); }
+      let jawAng = 0.9;
       return { group: g, update(now, dt, ctx) {
-        const answer = pf.round.glyph.answer; const live = pf.live.glyph;
-        const step = ctx.solved ? 4 : (live ? live.step : 0);
+        const answer = pf.round.glyph.answer; const live = pf.live.glyph; const fresh = live && now - live.at < 3000;
+        const step = ctx.solved ? 4 : (live ? live.step || 0 : 0);
         plates.forEach((p, i) => { const k = answer.indexOf(p.name); const order = k >= 0 && k < step ? k + 1 : 0; const key = String(order); if (key !== p.drawn) { p.drawn = key; paint(p, i, order); } });
+        const down = live && Array.isArray(live.down) ? live.down : [];
+        const snapping = fresh && live.snap;
+        teeth.forEach((t, i) => {
+          t.y = THREE.MathUtils.lerp(t.y, down.includes(i) ? 0.27 : 0.4, Math.min(1, dt * 16)); t.m.position.y = t.y;
+          t.mat.color.setHex(down.includes(i) ? (snapping ? ST.alert : ST.ok) : ST.paper);
+        });
+        const target = ctx.solved ? 1.12 : (live && typeof live.ang === 'number' ? live.ang : 0.9);
+        jawAng = THREE.MathUtils.lerp(jawAng, target, Math.min(1, dt * (snapping ? 26 : 8))); hinge.rotation.x = -jawAng;
+        upperMat.color.setHex(snapping ? ST.alert : ST.paper);
       } };
     }
 

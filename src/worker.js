@@ -5,7 +5,7 @@ import { DurableObject } from 'cloudflare:workers';
 
 const ROLES = { director: 'Flight Director', pathfinder: 'Pathfinder', xeno: 'Xenolinguist', astro: 'Astrophysicist' };
 const MAIN_NODES = ['conduits', 'resonator', 'glyph', 'descent', 'echo'];
-const NODE_NAMES = { conduits: 'the Conduits', resonator: 'the Resonator', glyph: 'the Glyph Lock', descent: 'the Descent', echo: 'the Echo Chamber' };
+const NODE_NAMES = { conduits: 'the Conduits', resonator: 'the Resonator', glyph: 'the Jaw', descent: 'the Descent', echo: 'the Echo Chamber' };
 const LENGTHS = [8, 10, 12, 15].map(m => m * 60000);
 const VENT_MS = 45000, VENT_FIRST_MS = 90000;
 

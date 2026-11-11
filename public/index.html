@@ -173,6 +173,8 @@ table.rule tbody tr:last-child td { border-bottom: 0; }
 .key.lit span { color: var(--ok); }
 .key.lit::after { content: attr(data-n); position: absolute; top: 4px; right: 6px; font: 600 12px/1 var(--font-mono); color: var(--ok); }
 .key.miss { animation: shake .3s; border-color: var(--alert); }
+.keypad.reference .key { cursor: default; opacity: 1; }
+.keypad.reference .key:disabled { opacity: 1; }
 @keyframes shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
 .shape { width: 20px; height: 20px; vertical-align: -5px; margin-right: 8px; }
 .ar-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 22; display: grid; gap: 10px; padding: 12px 14px calc(env(safe-area-inset-bottom, 0px) + 12px); background: var(--glass); color: var(--glass-ink); border-top: 1px solid var(--line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
@@ -331,7 +333,7 @@ summary { cursor: pointer; font: 500 11px/1.4 var(--font-mono); letter-spacing: 
     <a class="role" href="#xenolinguist" data-role="xeno">
       <span class="kicker">Specialist 01 // Phone</span>
       <span class="role-name">Xenolinguist</span>
-      <span class="role-job">Symbols, mazes and memory: the Glyph Lock, the Descent and the Echo Chamber.</span>
+      <span class="role-job">Symbols, mazes and memory: the Jaw, the Descent and the Echo Chamber.</span>
     </a>
     <a class="role" href="#astrophysicist" data-role="astro">
       <span class="kicker">Specialist 02 // Phone</span>
@@ -529,7 +531,7 @@ const SIGILS = ['Spiral','Eye','Crown','Wave'];
 const NODES = [
   { id: 'conduits',  name: 'The Conduits',      slot: 1, owner: 'astro' },
   { id: 'resonator', name: 'The Resonator',     slot: 2, owner: 'astro' },
-  { id: 'glyph',     name: 'The Glyph Lock',    slot: 3, owner: 'xeno' },
+  { id: 'glyph',     name: 'The Jaw',           slot: 3, owner: 'xeno' },
   { id: 'descent',   name: 'The Descent',       slot: 4, owner: 'xeno' },
   { id: 'echo',      name: 'The Echo Chamber',  slot: 5, owner: 'xeno' },
   { id: 'vent',      name: 'The Pressure Vent', slot: 6, owner: 'astro' }
@@ -564,6 +566,13 @@ function mulberry32(a) {
 }
 function charge(colour, dot, flicker) { return (COLOURS[colour] + (dot ? 1 : 0)) * (flicker ? 2 : 1); }
 function resonatorFreq(pattern, last) { return PATTERNS[pattern][last % 2]; }
+// The Jaw's eight teeth: the round's four glyphs plus four decoys, shuffled. Same on every device.
+function jawTeethFor(code, glyphs) {
+  const rnd = mulberry32(((code * 53) + 11) >>> 0); const int = n => Math.floor(rnd() * n);
+  const mix = a => { for (let i = a.length - 1; i > 0; i--) { const j = int(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const decoys = mix(GLYPH_GRID.flat().filter(g => !glyphs.includes(g))).slice(0, 4);
+  return mix(glyphs.concat(decoys));
+}
 function glyphAnswer(glyphs, sigil) {
   const idx = {};
   READ_ORDERS[sigil].forEach(([r, c], i) => { idx[GLYPH_GRID[r][c]] = i; });
@@ -681,7 +690,7 @@ function makeRound(code) {
     code, caseNumber: codename + ' ' + digits, last, cells, cellStates, sigil, nodeShard, shardNode, nodeSeal, deadShards,
     conduits: { strands, targets },
     resonator: { pattern, freq: resonatorFreq(pattern, last) },
-    glyph: { glyphs, answer: glyphAnswer(glyphs, sigil) },
+    glyph: { glyphs, answer: glyphAnswer(glyphs, sigil), teeth: jawTeethFor(code, glyphs) },
     descent: genBallMaze(rnd),
     echo: { stages },
     vent: { gauges, answer: ventAnswer(gauges, last) }
@@ -864,7 +873,7 @@ window.addEventListener('hashchange', route);
 function enterField(role) {
   const code = currentCode();
   if (state.role !== role || state.code !== code) {
-    Object.assign(state, { role, code, round: makeRound(code), opened: [], active: null, view: null, strikes: 0, solved: new Set(), glyphStep: 0, tuner: 500, mazeKey: 'A' });
+    Object.assign(state, { role, code, round: makeRound(code), opened: [], active: null, view: null, strikes: 0, solved: new Set(), glyphStep: 0, jaw: null, tuner: 500, mazeKey: 'A' });
   }
   state.active = null; state.view = null; document.body.classList.remove('holo'); AR.stopPreview();
   if (Net.round !== code || Net.role !== role) { state.epoch = null; state.lastSeenStrikes = undefined; state.ventKey = undefined; }
@@ -950,7 +959,8 @@ function openHolo(id) {
   const physics = AR.model && AR.model.locked;
   $('#tilt-row').hidden = !physics;
   $('#holo-reset').hidden = physics;
-  $('#ar-help').textContent = !physics ? 'Drag sideways to turn it, drag up to tilt it toward you, pinch to zoom. Double-tap resets.'
+  $('#ar-help').textContent = AR.model && AR.model.help ? AR.model.help
+    : !physics ? 'Drag sideways to turn it, drag up to tilt it toward you, pinch to zoom. Double-tap resets.'
     : state.camOn ? 'Pick up the card and tilt it to roll the ball. You can also drag on the screen to push it.'
     : 'Tilt your phone to roll the ball, or drag on the screen to push it.';
   if (physics) { gravityIn.ref = null; if (!needsMotionPermission()) startMotion(); renderTiltRow(); }
@@ -1022,16 +1032,17 @@ const RENDER = {
   },
   glyph() {
     const solved = state.solved.has('glyph');
-    const order = state.round.glyph.answer;
-    return `${solved ? '<p class="done-note">The Glyph Lock is open.</p>' : ''}
-      <p class="lead">Get the four glyphs from the Pathfinder and the sector sigil from the Flight Director. Tap the glyphs in the order you meet them when reading the grid the sigil’s way.</p>
+    const order = state.round.glyph.answer; const use3d = AR.ok;
+    return `${solved ? '<p class="done-note">The Jaw is open.</p>' : ''}
+      <p class="lead">Get the four glyphs from the Pathfinder and the sector sigil from the Flight Director. Work out their order from the lexicon, then press those four teeth on the Jaw in that order.</p>
+      <p class="formula">The first tooth starts the jaw closing: you then have 20 seconds. A wrong tooth, or running out of time, snaps it shut. That’s a strike and the teeth reset.</p>
       <h3>Reading orders</h3>
       <div class="orders">${SIGILS.map(s => `<figure>${readingOrderSvg(s)}<figcaption>${s}</figcaption></figure>`).join('')}</div>
       <p class="muted">Start at the filled dot, finish at the ring.</p>
-      <h3>Lexicon <span class="muted" id="glyph-progress" style="font-weight:500;font-size:16px">${solved ? '' : `${state.glyphStep} of 4 entered`}</span></h3>
-      <div class="keypad" id="keypad">${GLYPH_GRID.flat().map(name => {
+      <h3>Lexicon <span class="muted" id="glyph-progress" style="font-weight:500;font-size:16px;letter-spacing:.04em">${solved ? '' : `${state.glyphStep} of 4 pressed`}</span></h3>
+      <div class="keypad${use3d ? ' reference' : ''}" id="keypad">${GLYPH_GRID.flat().map(name => {
         const k = order.indexOf(name); const lit = solved ? k >= 0 : (k >= 0 && k < state.glyphStep);
-        return `<button class="key${lit ? ' lit' : ''}" type="button" data-glyph="${name}" ${lit ? `data-n="${k + 1}"` : ''} ${solved ? 'disabled' : ''}>${glyphSvg(name)}<span>${name}</span></button>`;
+        return `<button class="key${lit ? ' lit' : ''}" type="button" data-glyph="${name}" ${lit ? `data-n="${k + 1}"` : ''} ${solved || use3d ? 'disabled' : ''}>${glyphSvg(name)}<span>${name}</span></button>`
       }).join('')}</div>`;
   },
   echo() {
@@ -1102,8 +1113,8 @@ const BIND = {
       if (key.dataset.glyph === want) {
         state.glyphStep++; key.classList.add('lit'); key.dataset.n = state.glyphStep;
         if (Net.online) Net.send({ type: 'live', node: 'glyph', data: { step: state.glyphStep } });
-        $('#glyph-progress').textContent = `${state.glyphStep} of 4 entered`;
-        if (state.glyphStep === 4) { markSolved('glyph', 'The Glyph Lock is open'); openCard('glyph'); }
+        $('#glyph-progress').textContent = `${state.glyphStep} of 4 pressed`;
+        if (state.glyphStep === 4) { markSolved('glyph', 'The Jaw is open'); openCard('glyph'); }
       } else {
         key.classList.remove('miss'); void key.offsetWidth; key.classList.add('miss');
         addStrike(`${key.dataset.glyph} is out of order or not on the lock`);
@@ -1614,39 +1625,110 @@ function buildResonator() {
   } });
 }
 
-// The Glyph Lock: an upright white tablet engraved with the lexicon; entered glyphs turn green.
-function buildGlyphTablet() {
-  const K = holoKit(); const { at } = K; const y0 = 0.16, TH = 1.2;
-  K.base(0.9);
-  at(K.solid(new THREE.BoxGeometry(1.1, TH, 0.06)), 0, y0 + TH / 2, 0);
-  at(K.solid(new THREE.BoxGeometry(1.24, 0.06, 0.16)), 0, y0 - 0.03, 0);
-  for (const sx of [-1, 1]) {
-    at(K.solid(new THREE.CylinderGeometry(0.03, 0.03, TH + 0.12, 10)), sx * 0.66, y0 + (TH + 0.12) / 2, 0);
-    at(K.wire(new THREE.OctahedronGeometry(0.065)), sx * 0.66, y0 + TH + 0.21, 0);
-  }
-  const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 560;
-  const tex = new THREE.CanvasTexture(canvas);
-  const face = at(new THREE.Mesh(new THREE.PlaneGeometry(1.04, 1.14), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })), 0, y0 + TH / 2, 0.032);
-  face.renderOrder = 3; K.rise.add(face);
-  let drawn = '';
-  const paint = () => {
-    const g = canvas.getContext('2d'); g.clearRect(0, 0, canvas.width, canvas.height);
-    const order = state.round.glyph.answer; const solved = state.solved.has('glyph');
-    const cw = canvas.width / 4, ch = canvas.height / 4;
-    GLYPH_GRID.forEach((row, r) => row.forEach((name, c) => {
-      const k = order.indexOf(name); const lit = solved ? k >= 0 : k >= 0 && k < state.glyphStep;
-      const size = cw * 0.48, x = c * cw + (cw - size) / 2, y = r * ch + 16;
-      drawGlyph(g, name, x, y, size, lit ? '#1A9C5A' : '#1B2230');
-      g.font = '500 17px "IBM Plex Mono", ui-monospace, Menlo, monospace'; g.textAlign = 'center';
-      g.fillStyle = lit ? '#1A9C5A' : '#4A5361'; g.fillText(name.toUpperCase(), c * cw + cw / 2, y + size + 26);
-      if (lit) { g.font = '600 24px "IBM Plex Mono", ui-monospace, monospace'; g.fillText(String(k + 1), c * cw + cw - 16, y + 18); }
-    }));
-    tex.needsUpdate = true;
+// The Jaw: eight glyph teeth. Press the right four, in the sigil's order, before the jaw snaps shut.
+const JAW_MS = 20000;
+function jawState() { if (!state.jaw) state.jaw = { down: [], armedAt: 0, snapAt: 0 }; return state.jaw; }
+function buildJaw() {
+  const K = holoKit(); const { P } = K; const r = state.round.glyph, names = r.teeth, J = jawState();
+  K.base(1.04);
+  const Rj = 1.5, CZ = -1.2, span = 32 * Math.PI / 180, ang = i => -span + 2 * span * i / (names.length - 1);
+  const band = (ri, ro, a1, a2, h) => {
+    const s = new THREE.Shape(); s.absarc(0, 0, ro, a1 - Math.PI / 2, a2 - Math.PI / 2, false); s.absarc(0, 0, ri, a2 - Math.PI / 2, a1 - Math.PI / 2, true);
+    const g = new THREE.ExtrudeGeometry(s, { depth: h, bevelEnabled: false, curveSegments: 24 }); g.rotateX(-Math.PI / 2); return g;
   };
-  return Object.assign(K, { radius: 0.9, faceCamera: true, update() {
-    const key = state.glyphStep + (state.solved.has('glyph') ? 's' : '');
-    if (key !== drawn) { drawn = key; paint(); }
-  } });
+  // lower jaw: front arc that carries the teeth, and the palate running back to the hinge
+  const lower = K.solid(band(Rj - 0.2, Rj + 0.2, -span - 0.16, span + 0.16, 0.16)); lower.position.set(0, 0.06, CZ);
+  const palate = K.solid(new THREE.BoxGeometry(1.5, 0.1, 0.78)); palate.position.set(0, 0.11, -0.22);
+  const hitTargets = [];
+  const teeth = names.map((name, i) => {
+    const a = ang(i); const grp = new THREE.Group(); grp.position.set(Rj * Math.sin(a), 0, CZ + Rj * Math.cos(a)); grp.rotation.y = a; K.rise.add(grp);
+    const bodyMat = new THREE.MeshStandardMaterial({ color: PAPER, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.26, 0.17), bodyMat); body.position.y = 0.4; grp.add(body);
+    const edgeMat = new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.85 });
+    body.add(new THREE.LineSegments(new THREE.EdgesGeometry(body.geometry), edgeMat));
+    const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+    const tex = new THREE.CanvasTexture(c);
+    const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.165, 0.15), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
+    plate.rotation.x = -Math.PI / 2; plate.position.y = 0.132; plate.renderOrder = 3; body.add(plate);
+    const hit = new THREE.Mesh(new THREE.BoxGeometry(0.225, 0.62, 0.34), new THREE.MeshBasicMaterial({ visible: false })); hit.position.y = 0.42; hit.userData.i = i; grp.add(hit); hitTargets.push(hit);
+    return { name, body, bodyMat, edgeMat, c, tex, y: 0.4, v: 0, drawn: '' };
+  });
+  const paint = (t, color) => { const g = t.c.getContext('2d'); g.clearRect(0, 0, 128, 128); drawGlyph(g, t.name, 14, 14, 100, color); t.tex.needsUpdate = true; };
+  // upper jaw on a hinge at the back of the mouth
+  const hinge = new THREE.Group(); hinge.position.set(0, 0.74, -0.58); K.rise.add(hinge);
+  const top = K.solid(new THREE.BoxGeometry(1.5, 0.1, 0.8), P.white, hinge); top.position.set(0, 0, 0.4);
+  const upper = K.solid(band(Rj - 0.2, Rj + 0.2, -span - 0.16, span + 0.16, 0.14), P.white, hinge); upper.position.set(0, -0.07, CZ + 0.58);
+  for (let i = 0; i < 7; i++) {
+    const a = -span + 2 * span * (i + 0.5) / 7;
+    const fang = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.16, 10), P.white); fang.rotation.x = Math.PI;
+    fang.position.set(Rj * Math.sin(a), -0.15, CZ + 0.58 + Rj * Math.cos(a)); hinge.add(fang);
+  }
+  for (const sx of [-1, 1]) { const eye = K.wire(new THREE.OctahedronGeometry(0.075), P.line, hinge); eye.position.set(sx * 0.42, 0.14, 0.2); }
+  K.group.scale.setScalar(0.84);
+  let jawAng = 0.9, jawVel = 0, shake = 0, tag = null, tagKey = '', sentAt = 0;
+  const sendLive = (force) => {
+    const t = performance.now(); if (!Net.online || (!force && t - sentAt < 250)) return; sentAt = t;
+    Net.send({ type: 'live', node: 'glyph', data: { step: state.glyphStep, down: J.down.slice(), ang: Math.round(jawAng * 100) / 100, snap: J.snapAt ? 1 : 0 } });
+  };
+  const snap = reason => { J.snapAt = Date.now(); shake = 1; buzz([120, 40, 160]); addStrike(reason); sendLive(true); };
+  const model = Object.assign(K, {
+    radius: 0.9, faceCamera: true, hitTargets,
+    help: 'Press a tooth to push it down. Drag beside the Jaw to turn it, pinch to zoom.',
+    onTap(obj) {
+      const i = obj.userData.i; const solved = state.solved.has('glyph');
+      if (solved || J.snapAt || J.down.includes(i)) return;
+      J.down.push(i);
+      if (names[i] === r.answer[state.glyphStep]) {
+        state.glyphStep += 1; buzz(20);
+        if (state.glyphStep === 1) J.armedAt = Date.now();
+        if (state.glyphStep === 4) { J.armedAt = 0; markSolved('glyph', 'The Jaw is open'); if (state.active === 'glyph' && !$('#sheet').hidden) openCard('glyph'); }
+        sendLive(true);
+      } else snap(`${names[i]} was the wrong tooth`);
+    },
+    // A touch goes to the nearest tooth on screen, with a forgiving radius, so neighbours never steal a press.
+    pick(cx, cy) {
+      const pts = teeth.map((t, i) => model.screenOf(i)); let best = -1, bd = 1e9;
+      pts.forEach((p, i) => { const d = Math.hypot(p[0] - cx, p[1] - cy); if (d < bd) { bd = d; best = i; } });
+      const spacing = Math.hypot(pts[3][0] - pts[4][0], pts[3][1] - pts[4][1]);
+      return bd <= Math.max(22, spacing * 0.62) ? hitTargets[best] : null;
+    },
+    // where tooth i sits on screen
+    screenOf(i) {
+      const v = new THREE.Vector3(0, 0.46, 0); hitTargets[i].parent.localToWorld(v); v.project(AR.camera);
+      const c = $('#ar').getBoundingClientRect(); const s = Math.max(c.width / AR.W, c.height / AR.H);
+      return [c.left + (c.width - AR.W * s) / 2 + (v.x + 1) / 2 * AR.W * s, c.top + (c.height - AR.H * s) / 2 + (1 - v.y) / 2 * AR.H * s];
+    },
+    update(now, dt) {
+      const solved = state.solved.has('glyph'); const t = Date.now();
+      if (J.armedAt && !J.snapAt && !solved && t - J.armedAt > JAW_MS) snap('The Jaw snapped shut before the fourth tooth');
+      if (J.snapAt && t - J.snapAt > 1400) { J.snapAt = 0; J.armedAt = 0; J.down = []; state.glyphStep = 0; sendLive(true); if (state.active === 'glyph' && !$('#sheet').hidden) openCard('glyph'); }
+      const left = J.armedAt && !J.snapAt ? Math.max(0, JAW_MS - (t - J.armedAt)) : 0;
+      const target = solved ? 1.12 : J.snapAt ? 0 : J.armedAt ? 0.9 - 0.76 * Math.min(1, (t - J.armedAt) / JAW_MS) : 0.9;
+      const k = J.snapAt ? 900 : 140, c = J.snapAt ? 20 : 20;
+      jawVel += (k * (target - jawAng) - c * jawVel) * dt; jawAng += jawVel * dt;
+      if (jawAng < 0) { jawAng = 0; jawVel *= -0.3; }
+      hinge.rotation.x = -jawAng;
+      shake *= Math.pow(0.02, dt); K.rise.position.x = shake > 0.02 ? Math.sin(now / 14) * 0.03 * shake : 0;
+      teeth.forEach((tooth, i) => {
+        const isDown = J.down.includes(i); const right = isDown && r.answer.includes(tooth.name) && !J.snapAt;
+        const ty = isDown ? 0.27 : 0.4;
+        tooth.v += (520 * (ty - tooth.y) - 30 * tooth.v) * dt; tooth.y += tooth.v * dt; tooth.body.position.y = tooth.y;
+        const key = (solved && r.answer.includes(tooth.name)) || right ? 'ok' : (isDown && J.snapAt ? 'bad' : 'idle');
+        if (key !== tooth.drawn) {
+          tooth.drawn = key; paint(tooth, key === 'ok' ? '#138A50' : key === 'bad' ? '#D2386B' : '#1B2230');
+          tooth.edgeMat.color.setHex(key === 'ok' ? OK_GREEN : key === 'bad' ? 0xd2386b : INK);
+        }
+      });
+      const secs = left ? String(Math.ceil(left / 1000)) : '';
+      if (secs !== tagKey) {
+        tagKey = secs; if (tag) { K.group.remove(tag); tag.material.map.dispose(); tag.material.dispose(); tag = null; }
+        if (secs) { tag = textSprite(`Snaps in ${secs}`, 0.1); tag.position.set(0, 1.62, 0); K.group.add(tag); }
+      }
+      if (J.armedAt || J.snapAt) sendLive(false);
+    }
+  });
+  if (J.armedAt && !state.solved.has('glyph') && Date.now() - J.armedAt > JAW_MS) { /* the timer ran out while the node was closed: update() snaps on the first frame */ }
+  return model;
 }
 
 // The Echo Chamber: four numbered pads under an orbit of the four rule shapes, with echoing rings.
@@ -1701,7 +1783,7 @@ function buildVent() {
   } });
 }
 
-const MODEL_BUILDERS = { conduits: buildConduits, resonator: buildResonator, glyph: buildGlyphTablet, descent: buildBallMaze, echo: buildEcho, vent: buildVent };
+const MODEL_BUILDERS = { conduits: buildConduits, resonator: buildResonator, glyph: buildJaw, descent: buildBallMaze, echo: buildEcho, vent: buildVent };
 
 // ---------- Hologram touch controls ----------
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -1721,8 +1803,21 @@ function dragToCard(dx, dy) {
   let x = m[0] * dx - m[1] * dy, z = m[8] * dx - m[9] * dy; const n = Math.hypot(x, z) || 1; const k = Math.min(1, len / 90);
   return [x / n * k, z / n * k];
 }
+const pickRay = typeof THREE !== 'undefined' ? new THREE.Raycaster() : null;
+function pickHolo(cx, cy) {
+  if (!pickRay || !AR.model || !AR.model.hitTargets || !AR.anchor.visible) return null;
+  const c = $('#ar').getBoundingClientRect(); const s = Math.max(c.width / AR.W, c.height / AR.H);
+  const px = (cx - c.left - (c.width - AR.W * s) / 2) / s, py = (cy - c.top - (c.height - AR.H * s) / 2) / s;
+  AR.scene.updateMatrixWorld(true);
+  if (AR.model.pick) return AR.model.pick(cx, cy);
+  pickRay.setFromCamera(new THREE.Vector2(px / AR.W * 2 - 1, -(py / AR.H * 2 - 1)), AR.camera);
+  const hits = pickRay.intersectObjects(AR.model.hitTargets, false);
+  return hits.length ? hits[0].object : null;
+}
 stage.addEventListener('pointerdown', e => {
   if (!holoActive()) return;
+  const part = pickHolo(e.clientX, e.clientY);
+  if (part) { AR.model.onTap(part); return; }
   try { stage.setPointerCapture(e.pointerId); } catch (err) {}
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); beginGesture();
   if (AR.model.locked) { gravityIn.drag = [0, 0]; return; }
@@ -1793,7 +1888,7 @@ function renderTest() {
       ${ans(`Sever strand${r.conduits.targets.length > 1 ? 's' : ''} ${r.conduits.targets.join(', ')}.`)}</div>
     <div class="test-card"><h3>The Resonator</h3><p style="margin:0">Pulse pattern: ${pulseIcon(r.resonator.pattern)} <span class="muted">${PULSE_WORDS(r.resonator.pattern)}</span></p>
       ${ans(`${r.resonator.freq} kilohertz.`)}</div>
-    <div class="test-card"><h3>The Glyph Lock</h3><div class="glyph-row">${r.glyph.glyphs.map(g => glyphSvg(g)).join('')}</div>
+    <div class="test-card"><h3>The Jaw</h3><div class="glyph-row">${r.glyph.glyphs.map(g => glyphSvg(g)).join('')}</div>
       ${ans(r.glyph.answer.join(', ') + '.')}</div>
     <div class="test-card"><h3>The Descent</h3><dl>
       <dt>Ball starts</dt><dd>Outer ${hourOf(r.descent.start)}</dd>
@@ -1871,7 +1966,7 @@ function onRoomState(st) {
   if (state.epoch === undefined || state.epoch === null) state.epoch = st.epoch;
   else if (st.epoch !== state.epoch) {
     state.epoch = st.epoch;
-    Object.assign(state, { opened: [], solved: new Set(), glyphStep: 0, tuner: 500 });
+    Object.assign(state, { opened: [], solved: new Set(), glyphStep: 0, jaw: null, tuner: 500 });
     closeNode(); renderChips(); toast('The Flight Director reset the round', '', 'reset' + st.epoch);
   }
   if (st.strikes > state.strikes && state.lastSeenStrikes !== undefined && st.strikes > state.lastSeenStrikes && !state.ownStrikePending) toast(`Strike ${st.strikes} of 3 from the crew`, 'bad', 'crewstrike' + st.strikes);
